@@ -27,7 +27,7 @@ tqdm==4.67.1
 matplotlib==3.9.3
 pyvis==0.3.2
 
-# Optional: expose query layer as an API
+# Optional: expose query layer as an APIs
 fastapi==0.115.6
 uvicorn==0.32.1
 
