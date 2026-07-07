@@ -1,4 +1,4 @@
-# For a CPU-only install that avoids the NVIDIA CUDA wheel chain, use requirements-cpu.txt.
+--extra-index-url https://download.pytorch.org/whl/cpu
 
 # Core graph + orchestration
 langchain==0.3.7
@@ -10,6 +10,7 @@ langgraph==0.2.53
 langchain-groq==0.2.1
 
 # Embeddings (local, no API key needed)
+torch==2.5.1+cpu
 sentence-transformers==3.3.1
 
 # Vector store
@@ -35,11 +36,3 @@ uvicorn==0.32.1
 
 # Optional: if you want to work in Jupyter too
 jupyterlab==4.3.2
-
-
-
-#for ingestion
-pypdf>=4.0.0
-chromadb>=0.4.0
-ollama>=0.1.0
-pandas>=2.0.0

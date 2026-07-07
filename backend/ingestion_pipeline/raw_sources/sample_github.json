@@ -1,0 +1,29 @@
+{
+  "commits": [
+    {
+      "sha": "9b1deb4d3b7d4ccda797c3",
+      "author": "Alice Dev",
+      "timestamp": "2026-07-06T12:00:00Z",
+      "message": "Implement basic UI layout matching wireframe specification",
+      "diff": "--- a/src/App.js\n+++ b/src/App.js\n+import React from 'react';\n+export default function App() { return <div>Chronos</div>; }"
+    }
+  ],
+  "issues": [
+    {
+      "id": "11223344",
+      "number": 42,
+      "title": "API response parsing failure",
+      "body": "Ingestion output schema throws JSON parsing validation errors when checking timestamp strings.",
+      "author": "Bob Tester",
+      "timestamp": "2026-07-06T14:30:00Z",
+      "comments": [
+        {
+          "id": "11223345",
+          "body": "Checking this issue. It seems we need ISO-8601 UTC strings format.",
+          "author": "Alice Dev",
+          "timestamp": "2026-07-06T15:00:00Z"
+        }
+      ]
+    }
+  ]
+}

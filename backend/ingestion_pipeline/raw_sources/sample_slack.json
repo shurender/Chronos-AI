@@ -1,0 +1,19 @@
+[
+  {
+    "ts": "1783344000.000100",
+    "user": "Alice",
+    "text": "Has everyone verified the new ingestion JSON lines schema?",
+    "thread_ts": "1783344000.000100"
+  },
+  {
+    "ts": "1783344120.000200",
+    "user": "Charlie",
+    "text": "Yes, I verified it with our decision graph parser, and it imports cleanly.",
+    "thread_ts": "1783344000.000100"
+  },
+  {
+    "ts": "1783344500.000300",
+    "user": "Bob",
+    "text": "This is a simple direct message thread in the channel without replies."
+  }
+]
