@@ -11,8 +11,8 @@ from typing import Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from llm import embed_text, get_chat_model
-from schema import (
+from backend.llm import embed_text, get_chat_model
+from backend.schema import (
     CandidateEdges,
     CandidateNodes,
     ContradictionRecord,
@@ -20,7 +20,7 @@ from schema import (
     GraphNode,
     Tags,
 )
-from storage import (
+from backend.storage import (
     add_edge_to_graph,
     add_node_to_graph,
     add_node_to_chroma,

@@ -12,7 +12,7 @@ import threading
 
 from dotenv import load_dotenv
 
-from schema import DecisionForecast
+from backend.schema import DecisionForecast
 
 load_dotenv()
 

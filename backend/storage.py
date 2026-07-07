@@ -8,13 +8,15 @@ import pickle
 
 import chromadb
 from dotenv import load_dotenv
+from pathlib import Path
 
-from schema import GraphEdge, GraphNode
+from .schema import GraphEdge, GraphNode
+BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
 
-GRAPH_PATH = os.getenv("GRAPH_PATH", "./graph.gpickle")
-CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
+GRAPH_PATH = os.getenv("GRAPH_PATH", str(BASE_DIR / "graph.gpickle"))
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", str(BASE_DIR / "chroma_db"))
 
 import networkx as nx
 
@@ -36,16 +38,35 @@ def add_edge_to_graph(edge: GraphEdge) -> None:
     )
 
 
-def save_graph(path: str = GRAPH_PATH) -> None:
+def save_graph(path: str = GRAPH_PATH):
+    print("Saving graph to:", path)
+    print("Nodes:", G.number_of_nodes())
+    print("Edges:", G.number_of_edges())
+
     with open(path, "wb") as f:
         pickle.dump(G, f)
 
 
-def load_graph(path: str = GRAPH_PATH) -> nx.MultiDiGraph:
+def load_graph(path: str = GRAPH_PATH):
     global G
+
+    print("GRAPH_PATH =", path)
+    print("Exists =", os.path.exists(path))
+
     if os.path.exists(path):
         with open(path, "rb") as f:
-            G = pickle.load(f)
+            loaded_graph = pickle.load(f)
+
+        G.clear()
+
+        G.add_nodes_from(loaded_graph.nodes(data=True))
+
+        for u, v, key, data in loaded_graph.edges(keys=True, data=True):
+            G.add_edge(u, v, key=key, **data)
+
+    print("Nodes =", G.number_of_nodes())
+    print("Edges =", G.number_of_edges())
+
     return G
 
 

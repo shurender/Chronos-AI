@@ -1,13 +1,14 @@
 from fastapi import FastAPI, HTTPException
 
-from Forcast_router import router as forecast_router
-from query_layer import (
+from .Decision_Graph.Forcast_router import router as forecast_router
+from .Memory_Vault.memory_vault_router import router as memory_vault_router
+from .Decision_Graph.query_layer import (
     find_similar_past_decisions,
     get_full_graph,
     what_did_x_lead_to,
     why_did_x_fail,
 )
-from storage import load_graph
+from backend.storage import load_graph
 
 app = FastAPI(title="Decision Graph API")
 
@@ -16,6 +17,7 @@ app = FastAPI(title="Decision Graph API")
 load_graph()
 
 app.include_router(forecast_router)
+app.include_router(memory_vault_router)
 
 
 @app.get("/graph")

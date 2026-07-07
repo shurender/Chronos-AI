@@ -7,14 +7,14 @@ not ML-trained) methodology behind these numbers.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from Forcast_engine import generate_forecast
-from Forcast_store import (
+from .Forcast_engine import generate_forecast
+from .Forcast_store import (
     delete_forecast,
     get_forecast,
     list_forecasts,
     save_forecast,
 )
-from schema import DecisionForecast, DecisionForecastRequest
+from backend.schema import DecisionForecast, DecisionForecastRequest
 
 router = APIRouter(prefix="/forecast", tags=["decision-forecast"])
 

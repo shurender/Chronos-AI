@@ -173,3 +173,39 @@ class DecisionForecast(BaseModel):
         "statistical or ML-trained prediction — treat as a structured prompt for "
         "thinking, not a guarantee."
     )
+
+
+    # --- Memory Vault (append to schema.py) ---
+
+MemoryVaultNodeType = Literal["current_you", "decision", "future_paths"]
+
+
+class MemoryVaultGraphNode(BaseModel):
+    id: str
+    nodeType: MemoryVaultNodeType
+    label: str
+    year: Optional[int] = None
+
+
+class MemoryVaultGraphEdge(BaseModel):
+    source: str
+    target: str
+    animated: bool = True
+
+
+class MemoryEntry(BaseModel):
+    nodeId: str
+    year: int
+    title: str
+    outcome: str
+    lesson: str
+    connectsTo: list[str] = Field(default_factory=list)
+    sourceChunkIds: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    expandedByDefault: bool = False
+
+
+class MemoryVaultResponse(BaseModel):
+    graphNodes: list[MemoryVaultGraphNode]
+    graphEdges: list[MemoryVaultGraphEdge]
+    memoryEntries: list[MemoryEntry]

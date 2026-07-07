@@ -10,7 +10,7 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 
-from schema import GapRecord
+from backend.schema import GapRecord
 
 load_dotenv()
 
