@@ -1,9 +1,14 @@
 import json
-import os
+from pathlib import Path
+
 from parsers.github_parser import parse_github_commits, parse_github_issues
 from parsers.slack_parser import parse_slack_export
 from parsers.notion_parser import parse_notion_markdown
 from parsers.pdf_parser import parse_pdf_resume
+
+BASE_DIR = Path(__file__).resolve().parent
+RAW_SOURCES_DIR = BASE_DIR / "raw_sources"
+OUTPUT_PATH = BASE_DIR / "ingestion_output.jsonl"
 
 # Optional Vector DB setup
 try:
@@ -25,45 +30,43 @@ except ImportError:
 
 def main():
     all_chunks = []
-    
+
     # 1. Parse GitHub Mock Data
-    github_file = "test_data/sample_github.json"
-    if os.path.exists(github_file):
+    github_file = RAW_SOURCES_DIR / "sample_github.json"
+    if github_file.exists():
         print("Parsing GitHub data...")
-        with open(github_file, "r") as f:
+        with github_file.open("r", encoding="utf-8") as f:
             data = json.load(f)
             all_chunks.extend(parse_github_commits(data.get("commits", []), "Chronos-AI"))
             all_chunks.extend(parse_github_issues(data.get("issues", []), "Chronos-AI"))
-            
+
     # 2. Parse Slack Mock Data
-    slack_file = "test_data/sample_slack.json"
-    if os.path.exists(slack_file):
+    slack_file = RAW_SOURCES_DIR / "sample_slack.json"
+    if slack_file.exists():
         print("Parsing Slack data...")
-        with open(slack_file, "r") as f:
+        with slack_file.open("r", encoding="utf-8") as f:
             data = json.load(f)
             all_chunks.extend(parse_slack_export(data, "dev-team"))
 
     # 3. Parse Notion Mock Data
-    notion_file = "test_data/sample_notion.md"
-    if os.path.exists(notion_file):
+    notion_file = RAW_SOURCES_DIR / "sample_notion.json"
+    if notion_file.exists():
         print("Parsing Notion markdown data...")
-        with open(notion_file, "r") as f:
+        with notion_file.open("r", encoding="utf-8") as f:
             content = f.read()
-            all_chunks.extend(parse_notion_markdown(content, notion_file, "Project Specs"))
+            all_chunks.extend(parse_notion_markdown(content, str(notion_file), "Project Specs"))
 
     # 4. Parse PDF Resume
-    pdf_file = "test_data/sample_resume.pdf"
-    if os.path.exists(pdf_file):
+    pdf_file = RAW_SOURCES_DIR / "sample_resume.pdf"
+    if pdf_file.exists():
         print("Parsing PDF Resume...")
-        all_chunks.extend(parse_pdf_resume(pdf_file, author="Jane Doe"))
+        all_chunks.extend(parse_pdf_resume(str(pdf_file), author="Jane Doe"))
 
-    # Export structured output conforming to the required contract format
-    output_path = "ingestion_output.jsonl"
-    with open(output_path, "w") as f:
+    with OUTPUT_PATH.open("w", encoding="utf-8") as f:
         for chunk in all_chunks:
             f.write(json.dumps(chunk) + "\n")
-            
-    print(f"\nSaved {len(all_chunks)} chunks to {output_path} successfully.")
+
+    print(f"\nSaved {len(all_chunks)} chunks to {OUTPUT_PATH} successfully.")
 
     # 5. Store inside the local vector database
     if CHROMA_AVAILABLE:

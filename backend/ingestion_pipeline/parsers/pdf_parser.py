@@ -1,15 +1,24 @@
 import uuid
-import pypdf
+
+try:
+    import pypdf
+except ImportError:  # pragma: no cover - optional dependency
+    pypdf = None
+
 
 def parse_pdf_resume(pdf_path, author=None):
     chunks = []
+    if pypdf is None:
+        print(f"PDF parsing skipped for {pdf_path}: pypdf is not installed")
+        return chunks
+
     try:
         reader = pypdf.PdfReader(pdf_path)
         for i, page in enumerate(reader.pages):
             text = page.extract_text()
             if not text or not text.strip():
                 continue
-                
+
             chunks.append({
                 "chunk_id": str(uuid.uuid4()),
                 "source_type": "pdf_resume",

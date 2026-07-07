@@ -1,9 +1,0 @@
-# chronos Engine Architecture Specs
-
-This Notion document outlines our architectural strategy for the system components.
-
-## Vector Store Choices
-We are proceeding with ChromaDB for our vector storage to preserve localized, high-performance querying options.
-
-## Local Embedding Models
-We are running nomic-embed-text locally on our AMD ROCm setup for resource efficiency.
