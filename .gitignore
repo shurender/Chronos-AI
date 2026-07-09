@@ -8,10 +8,11 @@ backend/Decision_Graph/graph.gpickle
 data/
 lib
 chroma_db/
-Readme.md
 backend/Memory_Vault/__pycache__/
 graph.gpickle
 graph_view.html
 __pycache__/
 *.pyc
-.venv
+.env
+.venv/
+Frontend/node_modules/

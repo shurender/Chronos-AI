@@ -1,11 +1,11 @@
 import { GitBranch, Loader2, MessageSquare, FileText, Hash} from 'lucide-react';
-
+import { useState } from 'react';
 import { FutureSelfChat } from './components/chat/FutureSelfChat';
 import { MemoryGraphView } from './components/graph/MemoryGraphView';
 import { StepProgressBar } from './components/layout/StepProgressBar';
 import { TimelineCard } from './components/timeline/TimelineCard';
 import { useChronosStore } from './store/useChronosStore';
-
+import { LandingPage } from './components/layout/LandingPage';
 // ── Ambient background with radial glows ─────────────────────────────────────
 function AmbientBackground() {
   return (
@@ -17,6 +17,26 @@ function AmbientBackground() {
   );
 }
 
+function LandingPageView() {
+  const setStep = useChronosStore((state) => state.setStep);
+  
+  return (
+    <div className="flex flex-col items-center justify-center h-full animate-in fade-in duration-700">
+      {/* --- PASTE YOUR LOVABLE HTML/UI HERE --- */}
+      
+      <h1 className="text-6xl font-bold text-white mb-4">Chronos AI</h1>
+      <p className="text-xl text-slate-400 mb-8">See your future. Make better decisions.</p>
+      
+      {/* This is the magic button that launches the app smoothly */}
+      <button 
+        onClick={() => setStep(1)}
+        className="px-8 py-4 bg-white text-black font-bold rounded-full hover:scale-105 transition-transform"
+      >
+        Launch App
+      </button>
+    </div>
+  );
+}
 // ── Step 1: Connect Data ──────────────────────────────────────────────────────
 function ConnectDataView() {
   const setStep = useChronosStore((state) => state.setStep);
@@ -125,9 +145,13 @@ function DefineDecisionView() {
 }
 
 // ── Step 3: Simulate Futures ──────────────────────────────────────────────────
+// ── Step 3: Simulate Futures (TABBED VIEW) ────────────────────────────────────
 function SimulateFuturesView() {
   const simulationData = useChronosStore((state) => state.simulationData);
   const setStep = useChronosStore((state) => state.setStep);
+  
+  // Create state for our tabs
+  const [activeTab, setActiveTab] = useState<'timelines' | 'graph'>('timelines');
 
   if (!simulationData) {
     return (
@@ -142,58 +166,82 @@ function SimulateFuturesView() {
       {/* Sub-header */}
       <div className="flex shrink-0 items-center justify-between border-b border-white/[0.07]
         bg-[#0d1020]/80 backdrop-blur-md px-5 py-3">
-        <div>
+        <div className="w-1/3">
           <h2 className="text-sm font-semibold text-slate-100">Simulated Futures</h2>
           <p className="text-xs text-slate-500">
-            {simulationData.timelines.length} branches · memory graph + timeline comparison
+            {simulationData.timelines.length} branches modeled
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setStep(4)}
-          className="inline-flex items-center gap-2 rounded-lg
-            bg-gradient-to-r from-indigo-600 to-violet-600
-            hover:from-indigo-500 hover:to-violet-500
-            px-4 py-2 text-sm font-medium text-white
-            shadow-md shadow-indigo-500/25
-            transition-all duration-200"
-        >
-          <MessageSquare className="size-4" aria-hidden="true" />
-          Talk to Future Self
-        </button>
+
+        {/* --- SLEEK TAB SWITCHER --- */}
+        <div className="flex bg-black/40 p-1 rounded-lg border border-white/10 w-fit">
+          <button 
+            onClick={() => setActiveTab('timelines')}
+            className={`px-6 py-1.5 text-xs font-medium rounded-md transition-all duration-300 ${
+              activeTab === 'timelines' 
+              ? 'bg-indigo-500/20 text-indigo-300 shadow-sm' 
+              : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Timeline Branches
+          </button>
+          <button 
+            onClick={() => setActiveTab('graph')}
+            className={`px-6 py-1.5 text-xs font-medium rounded-md transition-all duration-300 ${
+              activeTab === 'graph' 
+              ? 'bg-indigo-500/20 text-indigo-300 shadow-sm' 
+              : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Memory Graph
+          </button>
+        </div>
+        {/* ------------------------ */}
+
+        <div className="w-1/3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setStep(4)}
+            className="inline-flex items-center gap-2 rounded-lg
+              bg-gradient-to-r from-indigo-600 to-violet-600
+              hover:from-indigo-500 hover:to-violet-500
+              px-4 py-2 text-sm font-medium text-white
+              shadow-md shadow-indigo-500/25
+              transition-all duration-200"
+          >
+            <MessageSquare className="size-4" aria-hidden="true" />
+            Talk to Future Self
+          </button>
+        </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        {/* Memory Graph panel */}
-        <section className="flex w-[40%] min-w-0 flex-col border-r border-white/[0.06] bg-[#0a0d1a]">
-          <div className="shrink-0 border-b border-white/[0.05] px-4 py-2">
-            <h3 className="text-xs font-semibold tracking-widest text-slate-500 uppercase">
-              Memory Graph
-            </h3>
-          </div>
-          <div className="min-h-0 flex-1">
-            <MemoryGraphView />
-          </div>
-        </section>
-
+      {/* Main Content Area (Absolute positioning allows smooth cross-fading if you add animations) */}
+      <div className="flex min-h-0 flex-1 relative overflow-hidden">
+        
         {/* Timeline Branches panel */}
-        <section className="flex w-[60%] min-w-0 flex-col bg-[#080b14]">
-          <div className="shrink-0 border-b border-white/[0.05] px-4 py-2">
-            <h3 className="text-xs font-semibold tracking-widest text-slate-500 uppercase">
-              Timeline Branches
-            </h3>
-          </div>
-          <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto p-4">
-            {simulationData.timelines.map((timeline) => (
-              <TimelineCard key={timeline.id} timeline={timeline} />
-            ))}
-          </div>
-        </section>
+        {activeTab === 'timelines' && (
+          <section className="absolute inset-0 flex flex-col bg-[#080b14] animate-in fade-in duration-300">
+            <div className="flex min-h-0 flex-1 gap-6 overflow-x-auto p-8 items-start">
+              {simulationData.timelines.map((timeline) => (
+                <TimelineCard key={timeline.id} timeline={timeline} className="h-[90%]" />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Memory Graph panel */}
+        {activeTab === 'graph' && (
+          <section className="absolute inset-0 flex flex-col bg-[#0a0d1a] animate-in fade-in duration-300">
+            <div className="min-h-0 flex-1">
+              <MemoryGraphView />
+            </div>
+          </section>
+        )}
+
       </div>
     </div>
   );
 }
-
 // ── Step 4: Explore ───────────────────────────────────────────────────────────
 function ExploreChatView() {
   return (
@@ -242,6 +290,7 @@ function LoadingOverlay() {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────────────────────
 function App() {
   const currentStep = useChronosStore((state) => state.currentStep);
   const isLoading = useChronosStore((state) => state.isLoading);
@@ -250,20 +299,23 @@ function App() {
     <div className="relative flex h-screen flex-col bg-[#080b14] text-white overflow-hidden">
       <AmbientBackground />
 
-      {/* Header */}
-      <header className="relative z-10 shrink-0">
-        <div className="border-b border-white/[0.07] bg-[#0d1020]/90 backdrop-blur-md px-6 py-4">
-          <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent leading-none">
-            Chronos Engine
-          </h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            AI Decision Intelligence · FlowState B2B Pivot Demo
-          </p>
-        </div>
-        <StepProgressBar />
-      </header>
+      {/* Conditionally render header ONLY if we are past the landing page (Step 0) */}
+      {currentStep > 0 && (
+        <header className="relative z-10 shrink-0 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="border-b border-white/[0.07] bg-[#0d1020]/90 backdrop-blur-md px-6 py-4">
+            <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent leading-none">
+              Chronos Engine
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              AI Decision Intelligence · FlowState B2B Pivot Demo
+            </p>
+          </div>
+          <StepProgressBar />
+        </header>
+      )}
 
       <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
+        {currentStep === 0 && <LandingPage />}
         {currentStep === 1 && <ConnectDataView />}
         {currentStep === 2 && <DefineDecisionView />}
         {currentStep === 3 && <SimulateFuturesView />}

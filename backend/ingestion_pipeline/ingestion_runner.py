@@ -1,5 +1,4 @@
 import json
-import sys
 from pathlib import Path
 
 from parsers.github_parser import parse_github_commits, parse_github_issues
@@ -8,11 +7,6 @@ from parsers.notion_parser import parse_notion_markdown
 from parsers.pdf_parser import parse_pdf_resume
 
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from backend.schema import Chunk
 RAW_SOURCES_DIR = BASE_DIR / "raw_sources"
 OUTPUT_PATH = BASE_DIR / "ingestion_output.jsonl"
 
@@ -33,13 +27,6 @@ try:
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
-
-
-def _normalize_chunk(chunk: dict) -> dict:
-    """Validate and re-dump each chunk through the shared schema."""
-    validated = Chunk.model_validate(chunk)
-    return validated.model_dump(mode="json")
-
 
 def main():
     all_chunks = []
@@ -74,8 +61,6 @@ def main():
     if pdf_file.exists():
         print("Parsing PDF Resume...")
         all_chunks.extend(parse_pdf_resume(str(pdf_file), author="Jane Doe"))
-
-    all_chunks = [_normalize_chunk(chunk) for chunk in all_chunks]
 
     with OUTPUT_PATH.open("w", encoding="utf-8") as f:
         for chunk in all_chunks:

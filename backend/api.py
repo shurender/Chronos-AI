@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware # <--- ADDED THIS
 
 from .Decision_Graph.Forcast_router import router as forecast_router
 from .Memory_Vault.memory_vault_router import router as memory_vault_router
@@ -13,31 +13,28 @@ from backend.storage import load_graph
 
 app = FastAPI(title="Decision Graph API")
 
+# --- ADDED CORS CONFIGURATION ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allows all origins (localhost:5173)
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
     allow_headers=["*"],
 )
+# --------------------------------
 
-# Load the persisted graph into memory on startup so query endpoints have data
-# even if this process didn't run the extraction pipeline itself.
 load_graph()
 
 app.include_router(forecast_router)
 app.include_router(memory_vault_router)
 
-
 @app.get("/graph")
 def graph():
     return get_full_graph()
 
-
 @app.get("/query/similar")
 def similar(q: str, k: int = 5):
     return find_similar_past_decisions(q, k=k)
-
 
 @app.get("/query/why-failed")
 def why_failed(label: str):
@@ -45,7 +42,6 @@ def why_failed(label: str):
     if result is None:
         raise HTTPException(status_code=404, detail=f"No node found with label '{label}'")
     return result
-
 
 @app.get("/query/led-to")
 def led_to(label: str):
