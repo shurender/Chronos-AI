@@ -24,7 +24,7 @@ Chronos Engine is an AI-powered Decision Intelligence digital twin platform. It 
 
 ---
 
-## 📦 Local Setup Instructions for Teammates
+## 📦 Local Setup Instructions
 
 To run Chronos Engine locally, you need to spin up both the **Frontend** and the **Backend** in two separate terminal windows.
 
@@ -40,39 +40,51 @@ To run Chronos Engine locally, you need to spin up both the **Frontend** and the
    ```bash
    cd Chronos-AI-main
    ```
-#1.Create and activate a virtual environment:
+## 1. Create and activate a virtual environment:
 ### On Mac/Linux:
+```bash
 python -m venv .venv
 source .venv/bin/activate 
-
+```
 ### On Windows:
+```bash
 python -m venv .venv
 .\.venv\Scripts\activate
+```
 
-# 2. Install Python dependencies:
+
+
+### 2. Install Python dependencies:
 (We use the CPU version for local dev to avoid massive CUDA downloads)
+```bash
 pip install -r requirements-cpu.txt
-
-# 3. Set up your API Key:
+```
+### 3. Set up your API Key:
 Create a new file named .env in the root folder (Chronos-AI-main/.env) and add your Groq API key:
+```bash
 GROQ_API_KEY=gsk_your_api_key_here
-
-# 4. Start the API server:
+```
+### 4. Start the API server:
+```bash
 uvicorn backend.api:app --reload --port 8000
-
+```
 The backend is now running at http://localhost:8000. (Interactive API docs available at /docs)
 
 🔵 Terminal 2: Start the Frontend (Vite)
 
-# 1. Navigate to the frontend directory:
-    cd Chronos-AI-main/Frontend
-
-# 2. Install Node dependencies:
+### 1. Navigate to the frontend directory:
+ ```bash
+   cd Chronos-AI-main/Frontend
+ ```
+### 2. Install Node dependencies:
 (Required fresh install for Tailwind v4)
+```bash
 npm install
-
-# 3. Run the development server:
+```
+### 3. Run the development server:
+```bash
 npm run dev
+```
 
 🔗 Using the App
 
