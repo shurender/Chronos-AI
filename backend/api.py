@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from .Decision_Graph.Forcast_router import router as forecast_router
 from .Memory_Vault.memory_vault_router import router as memory_vault_router
@@ -11,6 +12,14 @@ from .Decision_Graph.query_layer import (
 from backend.storage import load_graph
 
 app = FastAPI(title="Decision Graph API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load the persisted graph into memory on startup so query endpoints have data
 # even if this process didn't run the extraction pipeline itself.
