@@ -5,10 +5,16 @@ built graph. Kept as plain functions here; wrap in FastAPI (see api.py) once sta
 
 from backend.llm import embed_text
 from backend import storage
+from backend.logging_config import get_logger
 
-print("Loaded graph")
-print(storage.G.number_of_nodes())
-print(storage.G.number_of_edges())
+logger = get_logger(__name__)
+logger.info(
+    "Query layer loaded graph: %d nodes, %d edges",
+    storage.G.number_of_nodes(),
+    storage.G.number_of_edges(),
+)
+
+
 def find_similar_past_decisions(query_text: str, k: int = 5):
     embedding = embed_text(query_text)
     return storage.query_similar_chunks(embedding, k=k)

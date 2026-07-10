@@ -2,7 +2,7 @@ import { Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
-import { mockChatHistory } from '../../mocks/avatar.mock';
+import { chronosApi } from '../../api/chronosApi';
 import { useChronosStore } from '../../store/useChronosStore';
 import type { ChatMessage } from '../../types/avatar';
 import type { Citation, VeracityType } from '../../types/graph';
@@ -10,17 +10,17 @@ import { VeracityBadge } from '../ui/VeracityBadge';
 
 type GroundingLabel = 'graph_grounded' | 'general_opinion';
 
-interface AvatarChatResponse {
-  content: string;
-  referencedNodeIds?: string[];
-  citations?: Citation[];
-  groundingLabel?: 'graph_grounded' | 'evidence_grounded' | 'mixed' | 'general_opinion';
-  confidence?: number;
-  llmBacked?: boolean;
-}
-
 function createMessageId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizeCitations(citations: readonly { nodeId: string; label: string; excerpt?: string | null; url?: string | null }[]): Citation[] {
+  return citations.map((citation) => ({
+    nodeId: citation.nodeId,
+    label: citation.label,
+    excerpt: citation.excerpt ?? undefined,
+    url: citation.url ?? undefined,
+  }));
 }
 
 function getGroundingLabel(message: ChatMessage): GroundingLabel {
@@ -225,7 +225,6 @@ export function FutureSelfChat() {
   const [isReplyPending, setIsReplyPending] = useState(false);
 
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
-  const hydratedRef     = useRef(false);
 
   const resolveVeracity = useCallback(
     (nodeId: string): VeracityType => {
@@ -234,14 +233,6 @@ export function FutureSelfChat() {
     },
     [graphData],
   );
-
-  useEffect(() => {
-    if (hydratedRef.current || chatHistory.length > 0) return;
-    hydratedRef.current = true;
-    for (const message of mockChatHistory) {
-      addChatMessage(message);
-    }
-  }, [chatHistory.length, addChatMessage]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -274,18 +265,13 @@ export function FutureSelfChat() {
     setIsReplyPending(true);
 
     try {
-      const res = await fetch('http://localhost:8000/avatar/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: trimmed,
-          decisionQuestion,
-          selectedTimelineId: simulationData?.recommendedTimelineId ?? null,
-          graphNodeIds: graphData?.nodes.map((n) => n.id) ?? [],
-        }),
+      const data = await chronosApi.chat({
+        message: trimmed,
+        decisionQuestion,
+        selectedTimelineId: simulationData?.recommendedTimelineId ?? null,
+        simulationContext: simulationData ? { simulationData } : null,
+        graphNodeIds: graphData?.nodes.map((n) => n.id) ?? [],
       });
-      if (!res.ok) throw new Error('Avatar backend request failed');
-      const data = (await res.json()) as AvatarChatResponse;
 
       addChatMessage({
         id: createMessageId('msg_assistant'),
@@ -293,10 +279,10 @@ export function FutureSelfChat() {
         content: data.content,
         timestamp: new Date().toISOString(),
         referencedNodeIds: data.referencedNodeIds ?? [],
-        citations: data.citations ?? [],
+        citations: normalizeCitations(data.citations ?? []),
       });
     } catch (error) {
-      console.warn('Future Self backend unavailable — showing a low-confidence local reply.', error);
+      console.warn('Future Self backend unavailable; showing a low-confidence fallback message.', error);
       addChatMessage({
         id: createMessageId('msg_assistant'),
         role: 'assistant',

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "startup_pivot_enough_evidence",
+    "description": "Startup pivot with strong matching evidence (B2B/enterprise/design partners).",
+    "request": {
+      "name": "Should I pivot my B2B SaaS startup to enterprise design partners?",
+      "type": "Startup",
+      "horizon": "3 years",
+      "risk": 55,
+      "goal": "Land enterprise design partners",
+      "geography": "US",
+      "options": ["Pivot to enterprise", "Stay B2C"]
+    },
+    "run_avatar": true,
+    "avatar_message": "What should I prioritize first for the enterprise pivot?",
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "min_evidence_count": 3,
+      "market_should_refuse": false,
+      "expected_grounding_labels": ["evidence_grounded", "mixed", "graph_grounded"],
+      "expected_behaviors": ["MarketAgent cites evidence", "recommendation present"],
+      "forbidden_behaviors": ["market invents claims"]
+    }
+  },
+  {
+    "id": "startup_pivot_missing_runway",
+    "description": "Startup pivot with limited runway and no geography/options -> missing context flagged.",
+    "request": {
+      "name": "Should I pivot my startup with limited runway and funding risk?",
+      "type": "Startup",
+      "risk": 70,
+      "goal": "Extend runway while pivoting"
+    },
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "min_evidence_count": 1,
+      "expected_missing_fields": ["geography", "options"],
+      "confidence_penalty_expected": true,
+      "expected_behaviors": ["RiskAgent flags missing context"]
+    }
+  },
+  {
+    "id": "career_ai_agents_trend",
+    "description": "Career decision riding the AI-agent adoption trend (matches AI/adoption evidence).",
+    "request": {
+      "name": "Should I switch careers into AI agent engineering given adoption trends?",
+      "type": "Career",
+      "horizon": "5 years",
+      "risk": 45,
+      "goal": "Long-term skill/market fit"
+    },
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "min_evidence_count": 1,
+      "market_should_refuse": false
+    }
+  },
+  {
+    "id": "relocation_missing_geography",
+    "description": "Relocation decision without geography -> missing geography must be detected.",
+    "request": {
+      "name": "Should I relocate for a new senior role?",
+      "type": "Relocation",
+      "horizon": "3 years",
+      "risk": 40,
+      "goal": "Better long-term prospects"
+    },
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "expected_missing_fields": ["geography"],
+      "confidence_penalty_expected": true
+    }
+  },
+  {
+    "id": "financial_high_risk",
+    "description": "High-risk financial decision — must still produce branches and a recommendation.",
+    "request": {
+      "name": "Should I make a high-risk leveraged financial bet?",
+      "type": "Financial",
+      "horizon": "1 year",
+      "risk": 90,
+      "goal": "Maximize upside"
+    },
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "confidence_penalty_expected": true
+    }
+  },
+  {
+    "id": "random_unsupported_question",
+    "description": "Off-topic prompt with no matching evidence -> MarketAgent must refuse to assert claims.",
+    "request": {
+      "name": "Tell me a random poem about cats and the weather",
+      "type": "Life",
+      "goal": "unclear"
+    },
+    "run_avatar": true,
+    "avatar_message": "Tell me a random poem about cats",
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "min_evidence_count": 0,
+      "market_should_refuse": true,
+      "expected_grounding_labels": ["general_opinion", "evidence_grounded", "mixed"],
+      "forbidden_behaviors": ["market asserts unsupported market facts"]
+    }
+  },
+  {
+    "id": "contradictory_memory_graph",
+    "description": "Decision referencing conflicting project reports — must handle gracefully (empty graph in default mode).",
+    "request": {
+      "name": "Should I trust conflicting reports about my project's traction?",
+      "type": "Startup",
+      "risk": 50,
+      "goal": "Resolve the contradiction"
+    },
+    "critical": false,
+    "expectations": {
+      "expected_timelines": 3,
+      "expected_behaviors": ["no crash on empty/contradictory graph"]
+    }
+  },
+  {
+    "id": "no_evidence_no_precedent",
+    "description": "Gibberish decision with no evidence and no precedent -> refusal + missing context flagged.",
+    "request": {
+      "name": "xyzzy plugh frobnicate quux gibberish decision",
+      "type": "Life",
+      "risk": 50,
+      "goal": "nonsense"
+    },
+    "critical": true,
+    "expectations": {
+      "expected_timelines": 3,
+      "min_evidence_count": 0,
+      "market_should_refuse": true,
+      "expected_missing_fields": ["geography", "options", "evidence"],
+      "confidence_penalty_expected": true
+    }
+  }
+]

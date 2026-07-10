@@ -11,10 +11,27 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from backend.Agents.agent_schema import AgentCouncil
-from backend.External_Evidence.evidence_schema import EvidenceItem
+# Re-exported here for backward compatibility — callers that already do
+# `from backend.schema import SimulationRequest` (etc.) keep working. The
+# canonical definitions live in simulation_schema.py so that backend.Agents
+# (which needs these) never has to import backend.schema, avoiding a cycle.
+from backend.simulation_schema import (
+    AgentDisagreement,
+    BranchStatus,
+    Citation,
+    ConfidenceBreakdown,
+    DecisionType,
+    GroundedDecision,
+    Horizon,
+    MilestoneType,
+    SimulationMetadata,
+    SimulationRequest,
+    SimulationResponse,
+    TimelineBranch,
+    TimelineMilestone,
+)
 
 EvidenceType = Literal["fact", "inference", "prediction"]
 NodeType = Literal["decision", "outcome", "person", "skill", "project"]
@@ -25,7 +42,7 @@ class Chunk(BaseModel):
     """Shape that the ingestion pipeline must hand off (see build guide section 2)."""
 
     chunk_id: str
-    source_type: Literal["github_commit", "github_issue", "slack_message", "notion_page", "pdf_resume"]
+    source_type: Literal["github_commit", "github_issue", "slack_message", "notion_page", "pdf_resume", "uploaded_file"]
     source_id: str
     raw_text: str
     author: Optional[str] = None
@@ -40,9 +57,19 @@ class GraphNode(BaseModel):
     label: str
     description: str
     source_chunk_ids: list[str]
+    # Provenance source ids. Chunk ids and source ids share a namespace
+    # (SourceRecord.source_id == chunk_id), so this mirrors source_chunk_ids
+    # unless set explicitly — giving nodes an explicit source_ids reference.
+    source_ids: list[str] = Field(default_factory=list)
     evidence_type: EvidenceType
     confidence: float = Field(ge=0.0, le=1.0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @model_validator(mode="after")
+    def _mirror_source_ids(self) -> "GraphNode":
+        if not self.source_ids:
+            self.source_ids = list(self.source_chunk_ids)
+        return self
 
 
 class GraphEdge(BaseModel):
@@ -118,8 +145,6 @@ class ContradictionRecord(BaseModel):
 # of possible futures, not a guaranteed forecast. The `methodology` field on
 # DecisionForecast always says so, and callers/UI should surface it.
 
-DecisionType = Literal["Career", "Startup", "Financial", "Life", "Relocation"]
-Horizon = Literal["1 year", "3 years", "5 years", "10 years"]
 OutcomeLabel = Literal["Failure", "Survival", "Modest", "Strong", "Breakout"]
 RiskCategory = Literal["Financial", "Career", "Health", "Relationships", "Reputation", "Time"]
 
@@ -153,14 +178,6 @@ class RegretAnalysis(BaseModel):
     summary: str
 
 
-class GroundedDecision(BaseModel):
-    """A similar past decision pulled from the existing graph/chunk store, if any."""
-
-    chunk_id: str
-    snippet: str
-    distance: float
-
-
 class DecisionForecast(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     createdAt: datetime = Field(default_factory=datetime.utcnow)
@@ -179,102 +196,9 @@ class DecisionForecast(BaseModel):
 
 
 # --- Multi-branch simulation (POST /simulate) ---
-# Reuses the heuristic forecast engine internally but varies assumptions across
-# three branches (Conservative / Balanced / Aggressive). These models mirror the
-# frontend's timeline.ts contracts so the store can consume them with a thin
-# adapter. Still a deterministic heuristic — NOT a guaranteed prediction.
-
-MilestoneType = Literal[
-    "decision_point", "outcome_realized", "external_event", "skill_milestone", "project_phase"
-]
-BranchStatus = Literal["active", "archived", "recommended"]
-
-
-class SimulationRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=300)
-    type: DecisionType = "Career"
-    horizon: Horizon = "3 years"
-    risk: int = Field(default=50, ge=0, le=100)
-    goal: str = Field(default="Maximize favorable outcome, minimize regret", max_length=500)
-    constraints: Optional[str] = None
-    geography: Optional[str] = None
-    options: list[str] = Field(default_factory=list)
-
-
-class Citation(BaseModel):
-    """Provenance record; nodeId should resolve to a chunk/graph node when grounded."""
-
-    nodeId: str
-    label: str
-    excerpt: Optional[str] = None
-    url: Optional[str] = None
-
-
-class ConfidenceBreakdown(BaseModel):
-    evidenceStrength: float = Field(ge=0.0, le=1.0)
-    sourceReliability: float = Field(ge=0.0, le=1.0)
-    modelConsensus: float = Field(ge=0.0, le=1.0)
-    temporalRelevance: float = Field(ge=0.0, le=1.0)
-    causalCoherence: float = Field(ge=0.0, le=1.0)
-
-
-class TimelineMilestone(BaseModel):
-    month: int = Field(ge=0)
-    event: str
-    type: MilestoneType
-    veracity: EvidenceType  # simulated points are "prediction"
-    citations: list[Citation] = Field(default_factory=list)
-    dataSparsity: float = Field(ge=0.0, le=1.0)
-
-
-class AgentDisagreement(BaseModel):
-    agentId: str
-    agentLabel: str
-    position: str
-    confidence: float = Field(ge=0.0, le=1.0)
-    rationale: list[str] = Field(default_factory=list)
-
-
-class TimelineBranch(BaseModel):
-    id: str
-    title: str
-    description: str
-    probabilityScore: float = Field(ge=0.0, le=1.0)
-    expectedRegret: float = Field(ge=0.0, le=1.0)
-    status: BranchStatus = "active"
-    milestones: list[TimelineMilestone] = Field(default_factory=list)
-    confidenceBreakdown: ConfidenceBreakdown
-    anchorNodeIds: list[str] = Field(default_factory=list)
-    agentDisagreements: list[AgentDisagreement] = Field(default_factory=list)
-    groundedOn: list[GroundedDecision] = Field(default_factory=list)
-    # Curated local demo evidence relevant to this branch (see External_Evidence).
-    externalEvidence: list[EvidenceItem] = Field(default_factory=list)
-
-
-class SimulationMetadata(BaseModel):
-    generatedAt: datetime = Field(default_factory=datetime.utcnow)
-    schemaVersion: str = "1.0.0"
-    query: str
-    horizonMonths: int = Field(ge=0)
-
-
-class SimulationResponse(BaseModel):
-    metadata: SimulationMetadata
-    timelines: list[TimelineBranch]
-    recommendedTimelineId: str
-    affectedNodeIds: list[str] = Field(default_factory=list)
-    # De-duplicated union of the demo evidence used across all branches.
-    externalEvidenceUsed: list[EvidenceItem] = Field(default_factory=list)
-    isDemoEvidence: bool = True
-    # Deterministic multi-agent council output (see backend/Agents).
-    agentCouncil: Optional[AgentCouncil] = None
-    methodology: str = (
-        "Structured heuristic simulation, not a guaranteed prediction. Three "
-        "branches (Conservative / Balanced / Aggressive) are derived from the same "
-        "deterministic engine with varied risk assumptions, seeded off your request "
-        "text so repeated calls are stable. Confidence and grounding reflect only "
-        "what is available in your graph — treat as a reasoning aid, not a forecast."
-    )
+# SimulationRequest, TimelineBranch, SimulationResponse, etc. now live in
+# backend/simulation_schema.py (imported above) and are re-exported from this
+# module for backward compatibility.
 
 
     # --- Memory Vault (append to schema.py) ---

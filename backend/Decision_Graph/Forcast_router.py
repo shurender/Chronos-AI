@@ -29,9 +29,17 @@ simulate_router = APIRouter(tags=["simulation"])
 
 @simulate_router.post("/simulate", response_model=SimulationResponse)
 def create_simulation(request: SimulationRequest):
-    """Generate a 3-branch (Conservative / Balanced / Aggressive) structured
-    heuristic simulation. Does not persist; deterministic per request text."""
-    return generate_simulation(request)
+    """Generate a 3-branch (or option-mapped) structured heuristic simulation and
+    persist a full snapshot (evidence / twin / council / assumptions / provenance)
+    so it can be retrieved and replayed. Persistence is best-effort."""
+    response = generate_simulation(request)
+    try:
+        from backend.Simulation.simulation_store import persist_from_response
+
+        persist_from_response(request, response)
+    except Exception:  # noqa: BLE001 — persistence must never break /simulate
+        pass
+    return response
 
 
 @router.post("/decision", response_model=DecisionForecast)

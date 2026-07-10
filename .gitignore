@@ -17,3 +17,9 @@ __pycache__/
 .venv/
 Frontend/node_modules/
 .claude/
+backend/Ingestion/uploads/
+backend/Ingestion/runs.json
+backend/Digital_Twin/profiles.json
+backend/External_Evidence/uploaded_evidence.json
+backend/Provenance/provenance.db
+backend/Simulation/simulations.db
