@@ -33,7 +33,7 @@ pyvis==0.3.2
 # Optional: expose query layer as an APIs
 fastapi==0.115.6
 uvicorn==0.32.1
-httpx==0.27.2
+httpx==0.28.1
 
 # Optional: if you want to work in Jupyter too
 jupyterlab==4.3.2
