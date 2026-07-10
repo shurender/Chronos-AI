@@ -25,7 +25,12 @@ import hashlib
 import math
 import random
 
+from backend.Agents.agent_council import council_to_disagreements, run_agent_council
+from backend.External_Evidence.evidence_schema import EvidenceItem
+from backend.External_Evidence.evidence_service import search_evidence
 from backend.schema import (
+    Citation,
+    ConfidenceBreakdown,
     DecisionForecast,
     DecisionForecastRequest,
     ForecastPoint,
@@ -33,6 +38,11 @@ from backend.schema import (
     ProbabilityOutcome,
     RegretAnalysis,
     RiskHeatmapItem,
+    SimulationMetadata,
+    SimulationRequest,
+    SimulationResponse,
+    TimelineBranch,
+    TimelineMilestone,
 )
 
 OUTCOME_ORDER = ["Failure", "Survival", "Modest", "Strong", "Breakout"]
@@ -317,4 +327,217 @@ def generate_forecast(request: DecisionForecastRequest) -> DecisionForecast:
         riskHeatmap=[RiskHeatmapItem(label=c, level=risk_levels[c]) for c in RISK_CATEGORY_ORDER],
         regretAnalysis=regret,
         groundedOn=grounded,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Multi-branch simulation (POST /simulate)
+# ---------------------------------------------------------------------------
+# Runs the same heuristic engine three times with shifted risk assumptions to
+# produce Conservative / Balanced / Aggressive branches. Everything is derived
+# from the seeded forecast, so repeated calls with the same request are stable.
+
+# (key, title, risk delta, thesis)
+BRANCH_SPECS: list[tuple[str, str, int, str]] = [
+    (
+        "conservative",
+        "Conservative Path",
+        -25,
+        "Prioritizes downside protection: slower moves, smaller bets, and preserving optionality over chasing the tail.",
+    ),
+    (
+        "balanced",
+        "Balanced Path",
+        0,
+        "Balances upside and risk: commit incrementally, validate as you go, and scale only once signal appears.",
+    ),
+    (
+        "aggressive",
+        "Aggressive Path",
+        25,
+        "Maximizes upside and accepts a fatter downside: move fast, concentrate resources, and push for the breakout outcome.",
+    ),
+]
+
+
+def _dist_map(forecast: DecisionForecast) -> dict[str, float]:
+    return {o.outcome: o.value for o in forecast.probabilityDistribution}
+
+
+def _branch_citations(forecast: DecisionForecast) -> list[Citation]:
+    return [
+        Citation(nodeId=g.chunk_id, label=(g.snippet[:80] or g.chunk_id), excerpt=g.snippet)
+        for g in forecast.groundedOn
+    ]
+
+
+def _branch_probability(dist: dict[str, float]) -> float:
+    """Blend overall non-failure probability with the strongest single positive
+    outcome, normalized to 0-1 (mirrors the frontend adapter)."""
+    failure = dist.get("Failure", 0.0)
+    positives = [v for k, v in dist.items() if k != "Failure"]
+    strongest_positive = max(positives) if positives else 0.0
+    non_failure = 100.0 - failure
+    return _clip((non_failure + strongest_positive) / 200.0, 0.0, 1.0)
+
+
+def _branch_confidence(
+    forecast: DecisionForecast,
+    horizon_months: int,
+    dist: dict[str, float],
+    evidence: list[EvidenceItem],
+) -> ConfidenceBreakdown:
+    grounded = forecast.groundedOn
+
+    evidence_strength = _clip(len(grounded) / 3.0, 0.0, 1.0)
+
+    if grounded:
+        avg_distance = sum(g.distance for g in grounded) / len(grounded)
+        source = _clip(1.0 - avg_distance, 0.0, 1.0)
+    else:
+        source = 0.5
+
+    strongest_share = (max(dist.values()) / 100.0) if dist else 0.5
+    consensus = _clip(strongest_share, 0.0, 1.0)
+
+    temporal = _clip(1.0 - horizon_months / 120.0, 0.0, 1.0)
+
+    # External demo evidence lifts source reliability (by count AND confidence)
+    # and temporal relevance (external signals are more current than the graph).
+    evidence_coverage = _clip(len(evidence) / 4.0, 0.0, 1.0)  # 4+ items = full coverage
+    avg_evidence_conf = (
+        sum(e.confidence for e in evidence) / len(evidence) if evidence else 0.0
+    )
+    source = _clip(source + evidence_coverage * avg_evidence_conf * 0.4, 0.0, 1.0)
+    temporal = _clip(temporal + evidence_coverage * 0.15, 0.0, 1.0)
+
+    if forecast.riskHeatmap:
+        avg_risk = sum(r.level for r in forecast.riskHeatmap) / len(forecast.riskHeatmap)
+    else:
+        avg_risk = 50.0
+    causal = _clip(1.0 - avg_risk / 100.0, 0.0, 1.0)
+
+    return ConfidenceBreakdown(
+        evidenceStrength=round(evidence_strength, 3),
+        sourceReliability=round(source, 3),
+        modelConsensus=round(consensus, 3),
+        temporalRelevance=round(temporal, 3),
+        causalCoherence=round(causal, 3),
+    )
+
+
+def _branch_milestones(
+    title: str, forecast: DecisionForecast, citations: list[Citation]
+) -> list[TimelineMilestone]:
+    milestones: list[TimelineMilestone] = []
+    for i, point in enumerate(forecast.successForecast):
+        month = int(point.month.lstrip("M") or 0)
+        mtype = "decision_point" if i == 0 else "outcome_realized"
+        milestones.append(
+            TimelineMilestone(
+                month=month,
+                event=f"{title}: month {month} — modeled success likelihood {point.value:.1f}%",
+                type=mtype,
+                veracity="prediction",
+                citations=citations,
+                dataSparsity=0.35 if citations else 0.75,
+            )
+        )
+    return milestones
+
+
+def generate_simulation(request: SimulationRequest) -> SimulationResponse:
+    horizon_months = HORIZON_MONTHS[request.horizon]
+
+    # Retrieve curated LOCAL DEMO evidence relevant to the decision once, then
+    # attach it to every branch and use it to lift source/temporal confidence.
+    evidence_query = f"{request.name}. {request.goal}"
+    evidence = search_evidence(query=evidence_query, k=5)
+
+    branches: list[TimelineBranch] = []
+    forecasts: dict[str, DecisionForecast] = {}
+    dists: dict[str, dict[str, float]] = {}
+    for key, title, risk_delta, thesis in BRANCH_SPECS:
+        branch_risk = int(_clip(request.risk + risk_delta, 0.0, 100.0))
+        branch_req = DecisionForecastRequest(
+            name=request.name,
+            type=request.type,
+            horizon=request.horizon,
+            risk=branch_risk,
+            goal=request.goal,
+        )
+        forecast = generate_forecast(branch_req)
+        dist = _dist_map(forecast)
+        forecasts[key] = forecast
+        dists[key] = dist
+        citations = _branch_citations(forecast)
+
+        branches.append(
+            TimelineBranch(
+                id=f"branch_{key}",
+                title=title,
+                description=f"{thesis} {forecast.regretAnalysis.summary}",
+                probabilityScore=round(_branch_probability(dist), 3),
+                expectedRegret=round(_clip(forecast.regretAnalysis.regretScore / 100.0, 0.0, 1.0), 3),
+                status="active",
+                milestones=_branch_milestones(title, forecast, citations),
+                confidenceBreakdown=_branch_confidence(forecast, horizon_months, dist, evidence),
+                anchorNodeIds=[g.chunk_id for g in forecast.groundedOn],
+                agentDisagreements=[],  # filled from the agent council below
+                groundedOn=forecast.groundedOn,
+                externalEvidence=evidence,
+            )
+        )
+
+    # Recommend the branch with the best probability-vs-regret tradeoff.
+    recommended = max(
+        branches, key=lambda b: b.probabilityScore * 0.6 - b.expectedRegret * 0.4
+    )
+    recommended.status = "recommended"
+
+    affected = sorted({nid for b in branches for nid in b.anchorNodeIds})
+
+    # --- Multi-agent council -------------------------------------------------
+    # Memory-graph precedents (best-effort; never blocks the simulation).
+    try:
+        from .query_layer import find_similar_past_decisions_clean
+
+        precedents = find_similar_past_decisions_clean(evidence_query, k=5).get("items", [])
+    except Exception:
+        precedents = []
+
+    balanced = forecasts.get("balanced") or next(iter(forecasts.values()))
+    balanced_dist = dists.get("balanced") or {}
+    forecast_context = {
+        "failure_share": balanced_dist.get("Failure", 0.0),
+        "upside_share": balanced_dist.get("Strong", 0.0) + balanced_dist.get("Breakout", 0.0),
+        "top_risks": [
+            r.label
+            for r in sorted(balanced.riskHeatmap, key=lambda x: x.level, reverse=True)[:3]
+        ],
+    }
+
+    council = run_agent_council(
+        request=request,
+        precedents=precedents,
+        evidence=evidence,
+        branches=branches,
+        recommended_branch_id=recommended.id,
+        forecast_context=forecast_context,
+    )
+
+    # Attach council output per-branch and derive modelConsensus from agent
+    # agreement (same council applies to every branch of this decision).
+    disagreements = council_to_disagreements(council)
+    for branch in branches:
+        branch.agentDisagreements = disagreements
+        branch.confidenceBreakdown.modelConsensus = round(council.consensusScore, 3)
+
+    return SimulationResponse(
+        metadata=SimulationMetadata(query=request.name, horizonMonths=horizon_months),
+        timelines=branches,
+        recommendedTimelineId=recommended.id,
+        affectedNodeIds=affected,
+        externalEvidenceUsed=evidence,
+        agentCouncil=council,
     )

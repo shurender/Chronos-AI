@@ -37,7 +37,7 @@ interface StepNodeProps {
 function StepNode({ step, status, clickable, onNavigate }: StepNodeProps) {
   const Icon = step.icon;
 
-  const circleClass: Record<StepStatus, string> = {
+  const circleClassMap: Record<StepStatus, string> = {
     completed: [
       'border-indigo-500 bg-indigo-600 text-white',
       'shadow-md shadow-indigo-500/40',
@@ -48,13 +48,15 @@ function StepNode({ step, status, clickable, onNavigate }: StepNodeProps) {
       'shadow-lg shadow-indigo-500/40',
     ].join(' '),
     future: 'border-white/10 bg-white/[0.04] text-slate-600',
-  }[status];
+  };
+  const circleClass = circleClassMap[status];
 
-  const labelClass: Record<StepStatus, string> = {
+  const labelClassMap: Record<StepStatus, string> = {
     completed: 'bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent font-semibold',
     current:   'bg-gradient-to-r from-indigo-300 to-violet-300 bg-clip-text text-transparent font-bold',
     future:    'text-slate-600 font-medium',
-  }[status];
+  };
+  const labelClass = labelClassMap[status];
 
   const content = (
     <>

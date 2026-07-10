@@ -1,7 +1,22 @@
 # ⏳ Chronos Engine
 **AMD Developer Hackathon: ACT II | Unicorn Track**
 
-Chronos Engine is an AI-powered Decision Intelligence digital twin platform. It ingests your past data (Slack, GitHub, Notion) to build a memory graph, then uses a multi-agent parallel simulation engine to forecast thousands of future scenarios—optimizing for "Expected Regret."
+Chronos Engine is an AI-powered Decision Intelligence digital twin platform. It ingests your past data (Slack, GitHub, Notion) to build a memory graph, then runs a structured simulation — a heuristic MVP engine plus a lightweight multi-agent council — to explore a handful of evidence-backed plausible timeline branches per decision, optimizing for "Expected Regret." Chronos explores plausible futures from available evidence; it does not predict the future, and it is not a guaranteed forecast.
+
+---
+
+## 📍 Current MVP Status
+
+| Component | Status |
+|---|---|
+| Memory graph extraction (Slack/GitHub/Notion → nodes/edges) | ✅ Implemented |
+| Forecast engine (`/forecast/decision`, `/simulate`) | ⚠️ Heuristic MVP — deterministic, seeded, not ML-trained |
+| External evidence layer (`/evidence`) | ⚠️ Demo pack — curated local JSON, not live web search |
+| Multi-agent council (Historian/Behavioral/Domain/Market/Risk/Strategist) | ⚠️ Lightweight MVP — deterministic structured functions, not autonomous LLM agents yet |
+| Future Self chat (`/avatar/chat`) | ⚠️ Grounded MVP — Groq-backed when `GROQ_API_KEY` is set, deterministic labelled fallback otherwise |
+| AMD GPU / vLLM / ROCm execution | 🗺️ Planned adapter — not wired up in this hackathon build |
+
+This is a working MVP built to demonstrate the architecture end-to-end, not a production-scale system. Every simulated output is heuristic and explorable, not a guaranteed prediction.
 
 ---
 

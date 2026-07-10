@@ -13,6 +13,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from backend.Agents.agent_schema import AgentCouncil
+from backend.External_Evidence.evidence_schema import EvidenceItem
+
 EvidenceType = Literal["fact", "inference", "prediction"]
 NodeType = Literal["decision", "outcome", "person", "skill", "project"]
 EdgeType = Literal["causal", "temporal", "contributory"]
@@ -172,6 +175,105 @@ class DecisionForecast(BaseModel):
         "optionally nudged by similar past decisions found in your graph. Not a "
         "statistical or ML-trained prediction — treat as a structured prompt for "
         "thinking, not a guarantee."
+    )
+
+
+# --- Multi-branch simulation (POST /simulate) ---
+# Reuses the heuristic forecast engine internally but varies assumptions across
+# three branches (Conservative / Balanced / Aggressive). These models mirror the
+# frontend's timeline.ts contracts so the store can consume them with a thin
+# adapter. Still a deterministic heuristic — NOT a guaranteed prediction.
+
+MilestoneType = Literal[
+    "decision_point", "outcome_realized", "external_event", "skill_milestone", "project_phase"
+]
+BranchStatus = Literal["active", "archived", "recommended"]
+
+
+class SimulationRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=300)
+    type: DecisionType = "Career"
+    horizon: Horizon = "3 years"
+    risk: int = Field(default=50, ge=0, le=100)
+    goal: str = Field(default="Maximize favorable outcome, minimize regret", max_length=500)
+    constraints: Optional[str] = None
+    geography: Optional[str] = None
+    options: list[str] = Field(default_factory=list)
+
+
+class Citation(BaseModel):
+    """Provenance record; nodeId should resolve to a chunk/graph node when grounded."""
+
+    nodeId: str
+    label: str
+    excerpt: Optional[str] = None
+    url: Optional[str] = None
+
+
+class ConfidenceBreakdown(BaseModel):
+    evidenceStrength: float = Field(ge=0.0, le=1.0)
+    sourceReliability: float = Field(ge=0.0, le=1.0)
+    modelConsensus: float = Field(ge=0.0, le=1.0)
+    temporalRelevance: float = Field(ge=0.0, le=1.0)
+    causalCoherence: float = Field(ge=0.0, le=1.0)
+
+
+class TimelineMilestone(BaseModel):
+    month: int = Field(ge=0)
+    event: str
+    type: MilestoneType
+    veracity: EvidenceType  # simulated points are "prediction"
+    citations: list[Citation] = Field(default_factory=list)
+    dataSparsity: float = Field(ge=0.0, le=1.0)
+
+
+class AgentDisagreement(BaseModel):
+    agentId: str
+    agentLabel: str
+    position: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: list[str] = Field(default_factory=list)
+
+
+class TimelineBranch(BaseModel):
+    id: str
+    title: str
+    description: str
+    probabilityScore: float = Field(ge=0.0, le=1.0)
+    expectedRegret: float = Field(ge=0.0, le=1.0)
+    status: BranchStatus = "active"
+    milestones: list[TimelineMilestone] = Field(default_factory=list)
+    confidenceBreakdown: ConfidenceBreakdown
+    anchorNodeIds: list[str] = Field(default_factory=list)
+    agentDisagreements: list[AgentDisagreement] = Field(default_factory=list)
+    groundedOn: list[GroundedDecision] = Field(default_factory=list)
+    # Curated local demo evidence relevant to this branch (see External_Evidence).
+    externalEvidence: list[EvidenceItem] = Field(default_factory=list)
+
+
+class SimulationMetadata(BaseModel):
+    generatedAt: datetime = Field(default_factory=datetime.utcnow)
+    schemaVersion: str = "1.0.0"
+    query: str
+    horizonMonths: int = Field(ge=0)
+
+
+class SimulationResponse(BaseModel):
+    metadata: SimulationMetadata
+    timelines: list[TimelineBranch]
+    recommendedTimelineId: str
+    affectedNodeIds: list[str] = Field(default_factory=list)
+    # De-duplicated union of the demo evidence used across all branches.
+    externalEvidenceUsed: list[EvidenceItem] = Field(default_factory=list)
+    isDemoEvidence: bool = True
+    # Deterministic multi-agent council output (see backend/Agents).
+    agentCouncil: Optional[AgentCouncil] = None
+    methodology: str = (
+        "Structured heuristic simulation, not a guaranteed prediction. Three "
+        "branches (Conservative / Balanced / Aggressive) are derived from the same "
+        "deterministic engine with varied risk assumptions, seeded off your request "
+        "text so repeated calls are stable. Confidence and grounding reflect only "
+        "what is available in your graph — treat as a reasoning aid, not a forecast."
     )
 
 

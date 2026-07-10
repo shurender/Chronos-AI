@@ -1,4 +1,4 @@
-import { GitBranch, Loader2, MessageSquare, FileText, Hash} from 'lucide-react';
+import { ChevronDown, GitBranch, Loader2, MessageSquare, FileText, Hash} from 'lucide-react';
 import { useState } from 'react';
 import { FutureSelfChat } from './components/chat/FutureSelfChat';
 import { MemoryGraphView } from './components/graph/MemoryGraphView';
@@ -17,26 +17,6 @@ function AmbientBackground() {
   );
 }
 
-function LandingPageView() {
-  const setStep = useChronosStore((state) => state.setStep);
-  
-  return (
-    <div className="flex flex-col items-center justify-center h-full animate-in fade-in duration-700">
-      {/* --- PASTE YOUR LOVABLE HTML/UI HERE --- */}
-      
-      <h1 className="text-6xl font-bold text-white mb-4">Chronos AI</h1>
-      <p className="text-xl text-slate-400 mb-8">See your future. Make better decisions.</p>
-      
-      {/* This is the magic button that launches the app smoothly */}
-      <button 
-        onClick={() => setStep(1)}
-        className="px-8 py-4 bg-white text-black font-bold rounded-full hover:scale-105 transition-transform"
-      >
-        Launch App
-      </button>
-    </div>
-  );
-}
 // ── Step 1: Connect Data ──────────────────────────────────────────────────────
 function ConnectDataView() {
   const setStep = useChronosStore((state) => state.setStep);
@@ -91,9 +71,33 @@ function ConnectDataView() {
 }
 
 // ── Step 2: Define Decision ───────────────────────────────────────────────────
+const FIELD_CLASS =
+  'mt-1 w-full rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-sm text-slate-100 ' +
+  'placeholder:text-slate-600 focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none ' +
+  'disabled:opacity-50 transition-all duration-200';
+const LABEL_CLASS = 'text-xs font-medium text-slate-500';
+
 function DefineDecisionView() {
   const decisionQuestion = useChronosStore((state) => state.decisionQuestion);
   const setDecisionQuestion = useChronosStore((state) => state.setDecisionQuestion);
+  const decisionType = useChronosStore((state) => state.decisionType);
+  const setDecisionType = useChronosStore((state) => state.setDecisionType);
+  const horizon = useChronosStore((state) => state.horizon);
+  const setHorizon = useChronosStore((state) => state.setHorizon);
+  const risk = useChronosStore((state) => state.risk);
+  const setRisk = useChronosStore((state) => state.setRisk);
+  const goal = useChronosStore((state) => state.goal);
+  const setGoal = useChronosStore((state) => state.setGoal);
+  const constraints = useChronosStore((state) => state.constraints);
+  const setConstraints = useChronosStore((state) => state.setConstraints);
+  const geography = useChronosStore((state) => state.geography);
+  const setGeography = useChronosStore((state) => state.setGeography);
+  const optionA = useChronosStore((state) => state.optionA);
+  const setOptionA = useChronosStore((state) => state.setOptionA);
+  const optionB = useChronosStore((state) => state.optionB);
+  const setOptionB = useChronosStore((state) => state.setOptionB);
+  const optionC = useChronosStore((state) => state.optionC);
+  const setOptionC = useChronosStore((state) => state.setOptionC);
   const runSimulation = useChronosStore((state) => state.runSimulation);
   const isLoading = useChronosStore((state) => state.isLoading);
 
@@ -125,6 +129,137 @@ function DefineDecisionView() {
             disabled:opacity-50 transition-all duration-200"
         />
 
+        <p className="mt-4 text-xs text-slate-500">
+          These details reduce uncertainty in the simulation.
+        </p>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="decision-type" className={LABEL_CLASS}>Decision type</label>
+            <select
+              id="decision-type"
+              value={decisionType}
+              onChange={(e) => setDecisionType(e.target.value as typeof decisionType)}
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            >
+              <option value="Career">Career</option>
+              <option value="Startup">Startup</option>
+              <option value="Financial">Financial</option>
+              <option value="Life">Life</option>
+              <option value="Relocation">Relocation</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="horizon" className={LABEL_CLASS}>Horizon</label>
+            <select
+              id="horizon"
+              value={horizon}
+              onChange={(e) => setHorizon(e.target.value as typeof horizon)}
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            >
+              <option value="1 year">1 year</option>
+              <option value="3 years">3 years</option>
+              <option value="5 years">5 years</option>
+              <option value="10 years">10 years</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label htmlFor="risk" className={`${LABEL_CLASS} flex items-center justify-between`}>
+            <span>Risk tolerance</span>
+            <span className="text-slate-400">{risk}</span>
+          </label>
+          <input
+            id="risk"
+            type="range"
+            min={0}
+            max={100}
+            value={risk}
+            onChange={(e) => setRisk(Number(e.target.value))}
+            disabled={isLoading}
+            className="mt-1 w-full accent-indigo-500 disabled:opacity-50"
+          />
+        </div>
+
+        <div className="mt-3">
+          <label htmlFor="goal" className={LABEL_CLASS}>Goal</label>
+          <input
+            id="goal"
+            type="text"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            placeholder="What does success look like?"
+            disabled={isLoading}
+            className={FIELD_CLASS}
+          />
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="constraints" className={LABEL_CLASS}>Constraints</label>
+            <input
+              id="constraints"
+              type="text"
+              value={constraints}
+              onChange={(e) => setConstraints(e.target.value)}
+              placeholder="e.g. limited runway"
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            />
+          </div>
+          <div>
+            <label htmlFor="geography" className={LABEL_CLASS}>Geography / context</label>
+            <input
+              id="geography"
+              type="text"
+              value={geography}
+              onChange={(e) => setGeography(e.target.value)}
+              placeholder="e.g. remote, US-based"
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <div>
+            <label htmlFor="option-a" className={LABEL_CLASS}>Option A</label>
+            <input
+              id="option-a"
+              type="text"
+              value={optionA}
+              onChange={(e) => setOptionA(e.target.value)}
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            />
+          </div>
+          <div>
+            <label htmlFor="option-b" className={LABEL_CLASS}>Option B</label>
+            <input
+              id="option-b"
+              type="text"
+              value={optionB}
+              onChange={(e) => setOptionB(e.target.value)}
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            />
+          </div>
+          <div>
+            <label htmlFor="option-c" className={LABEL_CLASS}>Option C (optional)</label>
+            <input
+              id="option-c"
+              type="text"
+              value={optionC}
+              onChange={(e) => setOptionC(e.target.value)}
+              disabled={isLoading}
+              className={FIELD_CLASS}
+            />
+          </div>
+        </div>
+
         <button
           type="button"
           onClick={() => void runSimulation()}
@@ -140,6 +275,169 @@ function DefineDecisionView() {
           Run Simulation
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Historical Precedent Panel ────────────────────────────────────────────────
+function HistoricalPrecedentsPanel() {
+  const historicalPrecedents = useChronosStore((state) => state.historicalPrecedents);
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="shrink-0 border-b border-white/[0.07] bg-[#0d1020]/60 px-8 py-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="text-xs font-semibold tracking-wide text-slate-300 uppercase">
+          Historical Precedents
+        </span>
+        <ChevronDown
+          className={`size-4 text-slate-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {expanded && (
+        historicalPrecedents.length === 0 ? (
+          <p className="mt-2 text-xs text-amber-400/80">
+            No strong historical precedent found. Simulation confidence reduced.
+          </p>
+        ) : (
+          <ul className="mt-2 flex gap-3 overflow-x-auto pb-1">
+            {historicalPrecedents.map((p) => (
+              <li
+                key={p.chunk_id}
+                className="w-72 shrink-0 rounded-lg border border-white/[0.07] bg-white/[0.03] p-3"
+              >
+                <p className="text-xs leading-snug text-slate-300">{p.snippet}</p>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                  {p.source_type && <span>{p.source_type}</span>}
+                  {p.project && <span>{p.project}</span>}
+                  {p.timestamp && <span>{p.timestamp}</span>}
+                  <span>grounding {Math.round(Math.max(0, 1 - p.distance) * 100)}%</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
+
+// ── External Evidence Panel (Demo Evidence Pack) ──────────────────────────────
+function ExternalEvidencePanel() {
+  const externalEvidence = useChronosStore((state) => state.externalEvidence);
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="shrink-0 border-b border-white/[0.07] bg-[#0d1020]/60 px-8 py-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-2">
+          <span className="text-xs font-semibold tracking-wide text-slate-300 uppercase">
+            External Evidence
+          </span>
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300/90">
+            Demo Evidence Pack
+          </span>
+        </span>
+        <ChevronDown
+          className={`size-4 text-slate-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {expanded && (
+        externalEvidence.length === 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            No external evidence attached to this simulation.
+          </p>
+        ) : (
+          <ul className="mt-2 flex gap-3 overflow-x-auto pb-1">
+            {externalEvidence.map((e) => (
+              <li
+                key={e.id}
+                className="w-80 shrink-0 rounded-lg border border-white/[0.07] bg-white/[0.03] p-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold leading-snug text-slate-200">{e.title}</p>
+                  <span className="shrink-0 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-medium text-indigo-300">
+                    {Math.round(e.confidence * 100)}%
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{e.summary}</p>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                  <span>{e.evidence_type.replace(/_/g, ' ')}</span>
+                  <span>{e.source_name}</span>
+                  {e.published_at && <span>{e.published_at}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
+
+// ── Agent Council Panel ───────────────────────────────────────────────────────
+function AgentCouncilPanel() {
+  const agentCouncil = useChronosStore((state) => state.agentCouncil);
+  const [expanded, setExpanded] = useState(true);
+
+  if (!agentCouncil) return null;
+
+  return (
+    <div className="shrink-0 border-b border-white/[0.07] bg-[#0d1020]/60 px-8 py-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-2">
+          <span className="text-xs font-semibold tracking-wide text-slate-300 uppercase">
+            Agent Council
+          </span>
+          <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-300">
+            Consensus {Math.round(agentCouncil.consensusScore * 100)}%
+          </span>
+        </span>
+        <ChevronDown
+          className={`size-4 text-slate-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {expanded && (
+        <ul className="mt-2 flex gap-3 overflow-x-auto pb-1">
+          {agentCouncil.agents.map((a) => (
+            <li
+              key={a.agent_id}
+              className="w-72 shrink-0 rounded-lg border border-white/[0.07] bg-white/[0.03] p-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-200">{a.agent_label}</span>
+                <span className="shrink-0 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-medium text-indigo-300">
+                  {Math.round(a.confidence * 100)}%
+                </span>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{a.position}</p>
+              {a.concerns.length > 0 && (
+                <p className="mt-1.5 text-[11px] leading-snug text-amber-400/80">
+                  ⚠ {a.concerns[0]}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -169,7 +467,10 @@ function SimulateFuturesView() {
         <div className="w-1/3">
           <h2 className="text-sm font-semibold text-slate-100">Simulated Futures</h2>
           <p className="text-xs text-slate-500">
-            {simulationData.timelines.length} branches modeled
+            {simulationData.timelines.length} evidence-backed plausible timelines
+          </p>
+          <p className="mt-0.5 text-[10px] italic text-slate-600">
+            Chronos explores plausible futures from available evidence. It does not predict the future.
           </p>
         </div>
 
@@ -221,6 +522,9 @@ function SimulateFuturesView() {
         {/* Timeline Branches panel */}
         {activeTab === 'timelines' && (
           <section className="absolute inset-0 flex flex-col bg-[#080b14] animate-in fade-in duration-300">
+            <HistoricalPrecedentsPanel />
+            <ExternalEvidencePanel />
+            <AgentCouncilPanel />
             <div className="flex min-h-0 flex-1 gap-6 overflow-x-auto p-8 items-start">
               {simulationData.timelines.map((timeline) => (
                 <TimelineCard key={timeline.id} timeline={timeline} className="h-[90%]" />
@@ -271,7 +575,7 @@ function LoadingOverlay() {
             Simulating plausible futures
           </p>
           <p className="text-xs text-slate-500">
-            Multi-agent simulation running on AMD GPU…
+            Building evidence-backed scenario branches…
           </p>
         </div>
         {/* Progress dots */}

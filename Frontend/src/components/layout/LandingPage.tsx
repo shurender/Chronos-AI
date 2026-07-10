@@ -292,6 +292,9 @@ export function LandingPage() {
             <p className="text-xs tracking-[0.2em] text-white/40">POTENTIAL REGRET PREVENTED</p>
           </div>
         </div>
+        <p className="mt-4 text-center text-[11px] tracking-wide text-white/30">
+          Demo visualization — illustrative projection, not measured production usage.
+        </p>
       </section>
 
       {/* Features grid */}

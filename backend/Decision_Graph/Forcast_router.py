@@ -7,16 +7,31 @@ not ML-trained) methodology behind these numbers.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from .Forcast_engine import generate_forecast
+from .Forcast_engine import generate_forecast, generate_simulation
 from .Forcast_store import (
     delete_forecast,
     get_forecast,
     list_forecasts,
     save_forecast,
 )
-from backend.schema import DecisionForecast, DecisionForecastRequest
+from backend.schema import (
+    DecisionForecast,
+    DecisionForecastRequest,
+    SimulationRequest,
+    SimulationResponse,
+)
 
 router = APIRouter(prefix="/forecast", tags=["decision-forecast"])
+
+# Mounted at the app root (no prefix) so the path is POST /simulate.
+simulate_router = APIRouter(tags=["simulation"])
+
+
+@simulate_router.post("/simulate", response_model=SimulationResponse)
+def create_simulation(request: SimulationRequest):
+    """Generate a 3-branch (Conservative / Balanced / Aggressive) structured
+    heuristic simulation. Does not persist; deterministic per request text."""
+    return generate_simulation(request)
 
 
 @router.post("/decision", response_model=DecisionForecast)
