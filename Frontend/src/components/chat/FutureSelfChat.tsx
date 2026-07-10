@@ -16,7 +16,14 @@ import { VeracityBadge } from '../ui/VeracityBadge';
 
 type GroundingLabel = 'graph_grounded' | 'general_opinion';
 
-const FAKE_RESPONSE_DELAY_MS = 1000;
+interface AvatarChatResponse {
+  content: string;
+  referencedNodeIds?: string[];
+  citations?: Citation[];
+  groundingLabel?: 'graph_grounded' | 'evidence_grounded' | 'mixed' | 'general_opinion';
+  confidence?: number;
+  llmBacked?: boolean;
+}
 
 function createMessageId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -33,43 +40,6 @@ function formatClock(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   });
-}
-
-function buildFakeAssistantReply(userText: string): ChatMessage {
-  const lower = userText.toLowerCase();
-
-  if (lower.includes('runway') || lower.includes('money') || lower.includes('cash')) {
-    return {
-      id: createMessageId('msg_assistant'),
-      role: 'assistant',
-      content:
-        'Your runway node shows 14 months at current burn. I would prioritize closing one enterprise design partner before cutting B2C revenue — that milestone shifts the cash-out probability more than incremental cost cuts.',
-      timestamp: new Date().toISOString(),
-      referencedNodeIds: ['node_outcome_runway', 'node_decision_pivot_eval'],
-      citations: [
-        {
-          nodeId: 'node_outcome_runway',
-          label: '$1.2M Raised — 14 Months Runway',
-          excerpt: '$86K net burn/month at current headcount of 8 FTE.',
-        },
-        {
-          nodeId: 'node_decision_pivot_eval',
-          label: 'Formal B2B Pivot Evaluation (Q3 2026)',
-          excerpt: 'Present decision point — all timelines branch from here.',
-        },
-      ],
-    };
-  }
-
-  return {
-    id: createMessageId('msg_assistant'),
-    role: 'assistant',
-    content:
-      'That is a thoughtful question. I do not have a specific simulation branch mapped to it yet, but I can reason from general startup heuristics until we ingest more evidence into your memory graph.',
-    timestamp: new Date().toISOString(),
-    referencedNodeIds: [],
-    citations: [],
-  };
 }
 
 // ── Grounding meter ───────────────────────────────────────────────────────────
@@ -274,17 +244,18 @@ function MessageBubble({ message, resolveVeracity }: MessageBubbleProps) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function FutureSelfChat() {
-  const chatHistory     = useChronosStore((state) => state.chatHistory);
-  const graphData       = useChronosStore((state) => state.graphData);
-  const addChatMessage  = useChronosStore((state) => state.addChatMessage);
-  const setStep         = useChronosStore((state) => state.setStep);
+  const chatHistory       = useChronosStore((state) => state.chatHistory);
+  const graphData         = useChronosStore((state) => state.graphData);
+  const addChatMessage    = useChronosStore((state) => state.addChatMessage);
+  const setStep           = useChronosStore((state) => state.setStep);
+  const decisionQuestion  = useChronosStore((state) => state.decisionQuestion);
+  const simulationData    = useChronosStore((state) => state.simulationData);
 
   const [draft, setDraft]                   = useState('');
   const [isReplyPending, setIsReplyPending] = useState(false);
 
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const hydratedRef     = useRef(false);
-  const replyTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resolveVeracity = useCallback(
     (nodeId: string): VeracityType => {
@@ -306,12 +277,6 @@ export function FutureSelfChat() {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isReplyPending]);
 
-  useEffect(() => {
-    return () => {
-      if (replyTimerRef.current !== null) clearTimeout(replyTimerRef.current);
-    };
-  }, []);
-
   // Back button shows an `esc` hint — make it real.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -321,7 +286,7 @@ export function FutureSelfChat() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setStep]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed || isReplyPending) return;
@@ -339,11 +304,44 @@ export function FutureSelfChat() {
     setDraft('');
     setIsReplyPending(true);
 
-    replyTimerRef.current = setTimeout(() => {
-      addChatMessage(buildFakeAssistantReply(trimmed));
+    try {
+      const res = await fetch('http://localhost:8000/avatar/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: trimmed,
+          decisionQuestion,
+          selectedTimelineId: simulationData?.recommendedTimelineId ?? null,
+          graphNodeIds: graphData?.nodes.map((n) => n.id) ?? [],
+        }),
+      });
+      if (!res.ok) throw new Error('Avatar backend request failed');
+      const data = (await res.json()) as AvatarChatResponse;
+
+      addChatMessage({
+        id: createMessageId('msg_assistant'),
+        role: 'assistant',
+        content: data.content,
+        timestamp: new Date().toISOString(),
+        referencedNodeIds: data.referencedNodeIds ?? [],
+        citations: data.citations ?? [],
+      });
+    } catch (error) {
+      console.warn('Future Self backend unavailable — showing a low-confidence local reply.', error);
+      addChatMessage({
+        id: createMessageId('msg_assistant'),
+        role: 'assistant',
+        content:
+          '_(Future Self backend is unreachable, so this is general reasoning with low confidence.)_\n\n' +
+          'I could not reach the simulation backend to ground this answer. Once the backend is running, ' +
+          'I can cite your memory graph and evidence directly.',
+        timestamp: new Date().toISOString(),
+        referencedNodeIds: [],
+        citations: [],
+      });
+    } finally {
       setIsReplyPending(false);
-      replyTimerRef.current = null;
-    }, FAKE_RESPONSE_DELAY_MS);
+    }
   };
 
   return (
@@ -363,7 +361,7 @@ export function FutureSelfChat() {
           </span>
           <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] tracking-[0.2em] text-emerald-400/80 uppercase">
             <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden="true" />
-            live simulation
+            structured simulation
           </span>
         </div>
 

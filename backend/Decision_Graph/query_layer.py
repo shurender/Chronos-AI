@@ -14,6 +14,32 @@ def find_similar_past_decisions(query_text: str, k: int = 5):
     return storage.query_similar_chunks(embedding, k=k)
 
 
+def find_similar_past_decisions_clean(query_text: str, k: int = 5) -> dict:
+    """Same lookup as find_similar_past_decisions, reshaped into a flat
+    {items: [...]} list for API/frontend consumption instead of Chroma's raw
+    parallel-arrays shape."""
+    raw = find_similar_past_decisions(query_text, k=k)
+    ids = raw.get("ids", [[]])[0]
+    docs = raw.get("documents", [[]])[0]
+    distances = raw.get("distances", [[]])[0]
+    metadatas = raw.get("metadatas", [[]])[0]
+
+    items = []
+    for chunk_id, doc, distance, metadata in zip(ids, docs, distances, metadatas):
+        metadata = metadata or {}
+        items.append(
+            {
+                "chunk_id": chunk_id,
+                "snippet": (doc or "")[:280],
+                "distance": float(distance),
+                "source_type": metadata.get("source_type"),
+                "timestamp": metadata.get("timestamp"),
+                "project": metadata.get("project"),
+            }
+        )
+    return {"items": items}
+
+
 def why_did_x_fail(node_label: str):
     """Find a node by label and walk its incoming causal edges (what caused it)."""
     matches = [n for n, d in storage.G.nodes(data=True) if d.get("label") == node_label]

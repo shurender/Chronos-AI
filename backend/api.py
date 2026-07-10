@@ -2,9 +2,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware # <--- ADDED THIS
 
 from .Decision_Graph.Forcast_router import router as forecast_router
+from .Decision_Graph.Forcast_router import simulate_router
+from .External_Evidence.evidence_router import router as evidence_router
+from .Future_Self.avatar_router import router as avatar_router
 from .Memory_Vault.memory_vault_router import router as memory_vault_router
 from .Decision_Graph.query_layer import (
-    find_similar_past_decisions,
+    find_similar_past_decisions_clean,
     get_full_graph,
     what_did_x_lead_to,
     why_did_x_fail,
@@ -26,6 +29,9 @@ app.add_middleware(
 load_graph()
 
 app.include_router(forecast_router)
+app.include_router(simulate_router)
+app.include_router(evidence_router)
+app.include_router(avatar_router)
 app.include_router(memory_vault_router)
 
 @app.get("/graph")
@@ -34,7 +40,7 @@ def graph():
 
 @app.get("/query/similar")
 def similar(q: str, k: int = 5):
-    return find_similar_past_decisions(q, k=k)
+    return find_similar_past_decisions_clean(q, k=k)
 
 @app.get("/query/why-failed")
 def why_failed(label: str):
