@@ -13,16 +13,8 @@ import type {
   TimelineMilestone,
 } from '../types/timeline';
 
-// ---------------------------------------------------------------------------
-// Structured decision intake (mirrors backend SimulationRequest literals)
-// ---------------------------------------------------------------------------
-
 export type DecisionType = 'Career' | 'Startup' | 'Financial' | 'Life' | 'Relocation';
 export type Horizon = '1 year' | '3 years' | '5 years' | '10 years';
-
-// ---------------------------------------------------------------------------
-// Historical precedents (GET /query/similar)
-// ---------------------------------------------------------------------------
 
 export interface HistoricalPrecedent {
   chunk_id: string;
@@ -32,10 +24,6 @@ export interface HistoricalPrecedent {
   timestamp: string | null;
   project: string | null;
 }
-
-// ---------------------------------------------------------------------------
-// External demo evidence (returned inside POST /simulate)
-// ---------------------------------------------------------------------------
 
 export interface ExternalEvidenceItem {
   id: string;
@@ -49,10 +37,6 @@ export interface ExternalEvidenceItem {
   confidence: number;
   tags: string[];
 }
-
-// ---------------------------------------------------------------------------
-// Multi-agent council (returned inside POST /simulate)
-// ---------------------------------------------------------------------------
 
 export interface AgentOutput {
   agent_id: string;
@@ -72,10 +56,6 @@ export interface AgentCouncil {
   isDeterministic: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Backend response shapes (POST /forecast/decision)
-// ---------------------------------------------------------------------------
-
 interface DecisionForecastRequest {
   name: string;
   type: string;
@@ -90,7 +70,7 @@ interface ProbabilityOutcome {
 }
 
 interface ForecastPoint {
-  month: string; // e.g. "M0", "M12"
+  month: string;
   value: number;
 }
 
@@ -123,10 +103,6 @@ interface DecisionForecast {
   methodology: string;
 }
 
-// ---------------------------------------------------------------------------
-// Adapter: backend DecisionForecast -> frontend SimulationPayload
-// ---------------------------------------------------------------------------
-
 function parseHorizonMonths(horizon: string): number {
   const match = /(\d+)/.exec(horizon);
   const amount = match ? Number(match[1]) : 1;
@@ -155,25 +131,18 @@ function deriveConfidenceBreakdown(
   horizonMonths: number
 ): ConfidenceBreakdown {
   const { groundedOn, riskHeatmap, probabilityDistribution } = forecastData;
-
   const evidenceStrength = clamp01(groundedOn.length / 3);
-
   const avgGroundedDistance =
     groundedOn.length > 0
       ? groundedOn.reduce((sum, g) => sum + g.distance, 0) / groundedOn.length
       : undefined;
-  const sourceReliability =
-    avgGroundedDistance !== undefined ? clamp01(1 - avgGroundedDistance) : 0.5;
-
+  const sourceReliability = avgGroundedDistance !== undefined ? clamp01(1 - avgGroundedDistance) : 0.5;
   const strongestOutcomeShare =
     probabilityDistribution.length > 0
       ? Math.max(...probabilityDistribution.map((o) => o.value)) / 100
       : 0.5;
   const modelConsensus = clamp01(strongestOutcomeShare);
-
-  // Nearer-term horizons are inherently more predictable than far-out ones.
   const temporalRelevance = clamp01(1 - horizonMonths / 120);
-
   const avgRiskLevel =
     riskHeatmap.length > 0
       ? riskHeatmap.reduce((sum, r) => sum + r.level, 0) / riskHeatmap.length
@@ -195,8 +164,6 @@ function deriveProbabilityScore(distribution: ProbabilityOutcome[]): number {
     0,
     ...distribution.filter((o) => o.outcome !== 'Failure').map((o) => o.value)
   );
-  // Blend "overall non-failure probability" with the strongest single positive
-  // outcome so a decisive winner still moves the needle.
   const nonFailure = 100 - failure;
   return clamp01((nonFailure + strongestPositive) / 200);
 }
@@ -206,11 +173,9 @@ function deriveMilestones(
   citations: Citation[]
 ): TimelineMilestone[] {
   const points = forecastData.successForecast;
-
   return points.map((point, index) => {
     const month = parseMilestoneMonth(point.month);
     const type: MilestoneType = index === 0 ? 'decision_point' : 'outcome_realized';
-
     return {
       month,
       event: `Projected trajectory for "${forecastData.request.name}" at month ${month}: ${point.value.toFixed(1)}% success likelihood`,
@@ -261,6 +226,9 @@ function adaptForecastToSimulationPayload(
 
 export interface ChronosStoreState {
   currentStep: number;
+  activeSection: string;
+  isCurtainVisible: boolean;
+  isCurtainAnimatingOut: boolean;
   decisionQuestion: string;
   decisionType: DecisionType;
   horizon: Horizon;
@@ -282,6 +250,9 @@ export interface ChronosStoreState {
 
 export interface ChronosStoreActions {
   setStep: (step: number) => void;
+  setActiveSection: (section: string) => void;
+  triggerAppLaunch: () => void;
+  setCurtainState: (visible: boolean, animatingOut: boolean) => void;
   setDecisionQuestion: (question: string) => void;
   setDecisionType: (type: DecisionType) => void;
   setHorizon: (horizon: Horizon) => void;
@@ -300,6 +271,9 @@ export type ChronosStore = ChronosStoreState & ChronosStoreActions;
 
 export const useChronosStore = create<ChronosStore>((set, get) => ({
   currentStep: 0,
+  activeSection: 'chronos-top',
+  isCurtainVisible: true,
+  isCurtainAnimatingOut: false,
   decisionQuestion: '',
   decisionType: 'Startup',
   horizon: '3 years',
@@ -319,6 +293,29 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
   isLoading: false,
 
   setStep: (step) => set({ currentStep: step }),
+  setActiveSection: (section) => set({ activeSection: section }),
+  setCurtainState: (visible, animatingOut) => set({ isCurtainVisible: visible, isCurtainAnimatingOut: animatingOut }),
+  
+  // Global Transition Manager for entering the App seamlessly
+  triggerAppLaunch: () => {
+    // 1. Drop the curtain down
+    set({ isCurtainVisible: true, isCurtainAnimatingOut: false });
+    
+    // 2. Wait for it to cover the screen, then swap the content behind it and scroll to top
+    setTimeout(() => {
+      set({ currentStep: 1 });
+      document.getElementById('main-scroll-area')?.scrollTo(0, 0);
+      
+      // 3. Slide the curtain back up
+      set({ isCurtainAnimatingOut: true });
+      
+      // 4. Remove it from DOM after animation completes
+      setTimeout(() => {
+        set({ isCurtainVisible: false });
+      }, 1000);
+    }, 800);
+  },
+
   setDecisionQuestion: (question) => set({ decisionQuestion: question }),
   setDecisionType: (decisionType) => set({ decisionType }),
   setHorizon: (horizon) => set({ horizon }),
@@ -336,20 +333,17 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
     set({ isLoading: true });
 
     try {
-      // 1. Fetch LIVE Graph Data from Backend
       const graphRes = await fetch('http://localhost:8000/graph');
       if (!graphRes.ok) throw new Error("Backend not reachable");
       const graphJson = await graphRes.json();
 
-      // Adapt backend Python dictionary keys to frontend TypeScript interfaces
       const actualGraphData: GraphPayload = {
         metadata: {
           generatedAt: new Date().toISOString(),
           schemaVersion: '1.0.0',
           query: get().decisionQuestion
         },
-        // @ts-ignore - Mapping dynamic backend response
-        nodes: graphJson.nodes.map((n) => ({
+        nodes: graphJson.nodes.map((n: any) => ({
           id: n.id,
           type: n.node_type || 'decision',
           label: n.label || 'Unknown',
@@ -361,8 +355,7 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
           hasContradiction: false,
           summaryText: n.description || ''
         })),
-        // @ts-ignore - Mapping dynamic backend response
-        edges: graphJson.edges.map((e) => ({
+        edges: graphJson.edges.map((e: any) => ({
           id: e.key || Math.random().toString(),
           source: e.source,
           target: e.target,
@@ -373,7 +366,6 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
         }))
       };
 
-      // 2. Best-effort historical precedent lookup (never blocks the simulation)
       let historicalPrecedents: HistoricalPrecedent[] = [];
       try {
         const precedentsRes = await fetch(
@@ -387,7 +379,6 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
         console.warn("Historical precedent lookup failed.", precedentsErr);
       }
 
-      // 3. Build the shared decision request payload from the structured intake
       const state = get();
       const options = [state.optionA, state.optionB, state.optionC]
         .map((o) => o.trim())
@@ -404,9 +395,6 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
         options,
       };
 
-      // Prefer the multi-branch /simulate endpoint. Fall back to the
-      // single-shape /forecast/decision endpoint only if /simulate is
-      // unavailable, and to mock data only if both backend calls fail.
       let simulationData: SimulationPayload | null = null;
       let externalEvidence: ExternalEvidenceItem[] = [];
       let agentCouncil: AgentCouncil | null = null;
@@ -422,7 +410,6 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
             externalEvidenceUsed?: ExternalEvidenceItem[];
             agentCouncil?: AgentCouncil | null;
           };
-          console.log("Backend Simulation Received:", sim);
           externalEvidence = sim.externalEvidenceUsed ?? [];
           agentCouncil = sim.agentCouncil ?? null;
           simulationData = {
@@ -442,12 +429,9 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
         });
         if (!forecastRes.ok) throw new Error("Forecast request failed");
         const forecastData: DecisionForecast = await forecastRes.json();
-        console.log("Backend Forecast Received:", forecastData);
         simulationData = adaptForecastToSimulationPayload(forecastData, get().decisionQuestion);
       }
 
-      // No corroborating precedent in the graph -> nudge displayed evidence
-      // confidence down slightly rather than silently overstating it.
       if (historicalPrecedents.length === 0) {
         simulationData = {
           ...simulationData,
@@ -462,7 +446,7 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
       }
 
       set({
-        graphData: actualGraphData, // Powered by your LIVE Python Backend!
+        graphData: actualGraphData,
         simulationData,
         historicalPrecedents,
         externalEvidence,
@@ -473,7 +457,6 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
 
     } catch (error) {
       console.warn("Backend not running or failed. Falling back to mock data.", error);
-      // Fallback to mocks if backend isn't running so the UI doesn't break during demos
       set({
         graphData: mockGraphPayload,
         simulationData: mockSimulationPayload,

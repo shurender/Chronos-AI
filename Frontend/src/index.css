@@ -11,19 +11,55 @@
   --sidebar-width: 4rem; 
 }
 
-/* Infinite marquee for the bottom feature carousel */
+/* Infinite Marquee — slow, buttery, GPU-accelerated.
+   NOTE: the two duplicated item sets in LandingPage.tsx must be exactly
+   equal width for translate(-50%) to loop seamlessly — any asymmetric
+   padding between the two sets causes a visible jump at the seam. */
 @keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
 }
 
 .animate-marquee {
-  animation: marquee 40s linear infinite;
+  animation: marquee 42s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Chronos Engine loader text: a soft shimmer sweep across the letters,
+   similar to Claude's own loading text. Entrance/exit opacity for the
+   curtain itself is handled with React-controlled CSS transitions
+   (see the Curtain component in App.tsx) rather than mount-timed
+   keyframes, which is more reliable across browsers. */
+@keyframes text-shimmer {
+  0% { background-position: 150% center; }
+  100% { background-position: -50% center; }
+}
+
+.shimmer-text {
+  display: inline-block;
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.35) 35%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 255, 255, 0.35) 65%,
+    rgba(255, 255, 255, 0.35) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer 2.2s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-marquee {
+  .animate-marquee, .shimmer-text {
     animation: none;
+  }
+  .shimmer-text {
+    color: white;
+    background: none;
   }
 }
 
@@ -32,4 +68,5 @@ body {
   background-color: #ffffff;
   color: #111827;
   font-family: var(--font-sans);
+  scroll-behavior: smooth;
 }
