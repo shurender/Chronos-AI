@@ -43,3 +43,5 @@ class AvatarChatResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     # True when a real LLM produced the text; False for the deterministic fallback.
     llmBacked: bool = False
+    # Provenance claim id for this answer (resolve via GET /provenance/claim/{id}).
+    claim_id: Optional[str] = None

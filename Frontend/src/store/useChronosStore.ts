@@ -1,228 +1,24 @@
 import { create } from 'zustand';
 
-import { mockGraphPayload } from '../mocks/graph.mock';
-import { mockSimulationPayload } from '../mocks/timeline.mock';
-import type { ChatMessage } from '../types/avatar';
-import type { Citation } from '../types/graph';
-import type { GraphPayload } from '../types/graph';
+import { adaptBackendGraphToFrontendGraph, chronosApi } from '../api/chronosApi';
 import type {
-  ConfidenceBreakdown,
-  MilestoneType,
-  SimulationPayload,
-  Timeline,
-  TimelineMilestone,
-} from '../types/timeline';
+  AgentCouncil,
+  DigitalTwinProfile,
+  EvidenceItem,
+  HistoricalPrecedent,
+  IngestionRun,
+  IntakeAnalysis,
+  SimulationRequest,
+  TimelineBranch as BackendTimelineBranch,
+  TimelineMilestone as BackendTimelineMilestone,
+} from '../api/contracts';
+import type { ChatMessage } from '../types/avatar';
+import type { Citation, GraphPayload } from '../types/graph';
+import type { SimulationPayload, Timeline, TimelineMilestone } from '../types/timeline';
 
 export type DecisionType = 'Career' | 'Startup' | 'Financial' | 'Life' | 'Relocation';
 export type Horizon = '1 year' | '3 years' | '5 years' | '10 years';
-
-export interface HistoricalPrecedent {
-  chunk_id: string;
-  snippet: string;
-  distance: number;
-  source_type: string | null;
-  timestamp: string | null;
-  project: string | null;
-}
-
-export interface ExternalEvidenceItem {
-  id: string;
-  domain: string;
-  title: string;
-  summary: string;
-  source_name: string;
-  source_url: string | null;
-  published_at: string | null;
-  evidence_type: string;
-  confidence: number;
-  tags: string[];
-}
-
-export interface AgentOutput {
-  agent_id: string;
-  agent_label: string;
-  position: string;
-  confidence: number;
-  rationale: string[];
-  citations: string[];
-  concerns: string[];
-}
-
-export interface AgentCouncil {
-  agents: AgentOutput[];
-  recommendedBranchId: string | null;
-  consensusScore: number;
-  summary: string;
-  isDeterministic: boolean;
-}
-
-interface DecisionForecastRequest {
-  name: string;
-  type: string;
-  horizon: string;
-  risk: number;
-  goal: string;
-}
-
-interface ProbabilityOutcome {
-  outcome: string;
-  value: number;
-}
-
-interface ForecastPoint {
-  month: string;
-  value: number;
-}
-
-interface RiskHeatmapItem {
-  label: string;
-  level: number;
-}
-
-interface RegretAnalysis {
-  regretScore: number;
-  inactionRegretScore: number;
-  summary: string;
-}
-
-interface GroundedDecision {
-  chunk_id: string;
-  snippet: string;
-  distance: number;
-}
-
-interface DecisionForecast {
-  id: string;
-  createdAt: string;
-  request: DecisionForecastRequest;
-  probabilityDistribution: ProbabilityOutcome[];
-  successForecast: ForecastPoint[];
-  riskHeatmap: RiskHeatmapItem[];
-  regretAnalysis: RegretAnalysis;
-  groundedOn: GroundedDecision[];
-  methodology: string;
-}
-
-function parseHorizonMonths(horizon: string): number {
-  const match = /(\d+)/.exec(horizon);
-  const amount = match ? Number(match[1]) : 1;
-  return horizon.toLowerCase().includes('year') ? amount * 12 : amount;
-}
-
-function parseMilestoneMonth(month: string): number {
-  const match = /(\d+)/.exec(month);
-  return match ? Number(match[1]) : 0;
-}
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
-function deriveCitations(groundedOn: GroundedDecision[]): Citation[] {
-  return groundedOn.map((g) => ({
-    nodeId: g.chunk_id,
-    label: g.snippet.slice(0, 80) || g.chunk_id,
-    excerpt: g.snippet,
-  }));
-}
-
-function deriveConfidenceBreakdown(
-  forecastData: DecisionForecast,
-  horizonMonths: number
-): ConfidenceBreakdown {
-  const { groundedOn, riskHeatmap, probabilityDistribution } = forecastData;
-  const evidenceStrength = clamp01(groundedOn.length / 3);
-  const avgGroundedDistance =
-    groundedOn.length > 0
-      ? groundedOn.reduce((sum, g) => sum + g.distance, 0) / groundedOn.length
-      : undefined;
-  const sourceReliability = avgGroundedDistance !== undefined ? clamp01(1 - avgGroundedDistance) : 0.5;
-  const strongestOutcomeShare =
-    probabilityDistribution.length > 0
-      ? Math.max(...probabilityDistribution.map((o) => o.value)) / 100
-      : 0.5;
-  const modelConsensus = clamp01(strongestOutcomeShare);
-  const temporalRelevance = clamp01(1 - horizonMonths / 120);
-  const avgRiskLevel =
-    riskHeatmap.length > 0
-      ? riskHeatmap.reduce((sum, r) => sum + r.level, 0) / riskHeatmap.length
-      : 50;
-  const causalCoherence = clamp01(1 - avgRiskLevel / 100);
-
-  return {
-    evidenceStrength,
-    sourceReliability,
-    modelConsensus,
-    temporalRelevance,
-    causalCoherence,
-  };
-}
-
-function deriveProbabilityScore(distribution: ProbabilityOutcome[]): number {
-  const failure = distribution.find((o) => o.outcome === 'Failure')?.value ?? 0;
-  const strongestPositive = Math.max(
-    0,
-    ...distribution.filter((o) => o.outcome !== 'Failure').map((o) => o.value)
-  );
-  const nonFailure = 100 - failure;
-  return clamp01((nonFailure + strongestPositive) / 200);
-}
-
-function deriveMilestones(
-  forecastData: DecisionForecast,
-  citations: Citation[]
-): TimelineMilestone[] {
-  const points = forecastData.successForecast;
-  return points.map((point, index) => {
-    const month = parseMilestoneMonth(point.month);
-    const type: MilestoneType = index === 0 ? 'decision_point' : 'outcome_realized';
-    return {
-      month,
-      event: `Projected trajectory for "${forecastData.request.name}" at month ${month}: ${point.value.toFixed(1)}% success likelihood`,
-      type,
-      veracity: 'prediction',
-      citations,
-      dataSparsity: citations.length > 0 ? 0.35 : 0.75,
-    };
-  });
-}
-
-function adaptForecastToSimulationPayload(
-  forecastData: DecisionForecast,
-  decisionQuestion: string
-): SimulationPayload {
-  const horizonMonths = parseHorizonMonths(forecastData.request.horizon);
-  const citations = deriveCitations(forecastData.groundedOn);
-  const milestones = deriveMilestones(forecastData, citations);
-  const probabilityScore = deriveProbabilityScore(forecastData.probabilityDistribution);
-  const expectedRegret = clamp01(forecastData.regretAnalysis.regretScore / 100);
-  const confidenceBreakdown = deriveConfidenceBreakdown(forecastData, horizonMonths);
-
-  const timeline: Timeline = {
-    id: forecastData.id,
-    title: forecastData.request.name,
-    description: `${forecastData.regretAnalysis.summary} ${forecastData.methodology}`,
-    probabilityScore,
-    expectedRegret,
-    status: 'recommended',
-    milestones,
-    confidenceBreakdown,
-    anchorNodeIds: [],
-    agentDisagreements: [],
-  };
-
-  return {
-    metadata: {
-      generatedAt: forecastData.createdAt,
-      schemaVersion: '1.0.0',
-      query: decisionQuestion,
-      horizonMonths,
-    },
-    timelines: [timeline],
-    recommendedTimelineId: timeline.id,
-    affectedNodeIds: [],
-  };
-}
+export type BackendStatus = 'unknown' | 'connected' | 'disconnected';
 
 export interface ChronosStoreState {
   currentStep: number;
@@ -239,11 +35,18 @@ export interface ChronosStoreState {
   optionA: string;
   optionB: string;
   optionC: string;
+  backendStatus: BackendStatus;
+  connectStatus: string | null;
+  errorMessage: string | null;
   graphData: GraphPayload | null;
   simulationData: SimulationPayload | null;
+  intakeAnalysis: IntakeAnalysis | null;
+  digitalTwinProfile: DigitalTwinProfile | null;
   historicalPrecedents: HistoricalPrecedent[];
-  externalEvidence: ExternalEvidenceItem[];
+  externalEvidence: EvidenceItem[];
   agentCouncil: AgentCouncil | null;
+  selectedTimelineId: string | null;
+  lastIngestionRun: IngestionRun | null;
   chatHistory: ChatMessage[];
   isLoading: boolean;
 }
@@ -264,10 +67,61 @@ export interface ChronosStoreActions {
   setOptionB: (value: string) => void;
   setOptionC: (value: string) => void;
   addChatMessage: (msg: ChatMessage) => void;
+  checkBackendStatus: () => Promise<void>;
+  loadDemoWorkspace: () => Promise<void>;
+  ingestGithubRepo: (repo: string) => Promise<void>;
+  uploadFiles: (files: FileList | File[]) => Promise<void>;
+  refreshGraph: () => Promise<GraphPayload>;
   runSimulation: () => Promise<void>;
 }
 
 export type ChronosStore = ChronosStoreState & ChronosStoreActions;
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getOptions(state: ChronosStoreState): string[] {
+  return [state.optionA, state.optionB, state.optionC]
+    .map((option) => option.trim())
+    .filter(Boolean);
+}
+
+function buildSimulationRequest(state: ChronosStoreState): SimulationRequest {
+  return {
+    name: state.decisionQuestion.trim(),
+    type: state.decisionType,
+    horizon: state.horizon,
+    risk: state.risk,
+    goal: state.goal.trim() || 'Maximize favorable outcome, minimize regret',
+    constraints: state.constraints.trim() || null,
+    geography: state.geography.trim() || null,
+    options: getOptions(state),
+  };
+}
+
+function normalizeCitation(citation: { nodeId: string; label: string; excerpt?: string | null; url?: string | null }): Citation {
+  return {
+    nodeId: citation.nodeId,
+    label: citation.label,
+    excerpt: citation.excerpt ?? undefined,
+    url: citation.url ?? undefined,
+  };
+}
+
+function normalizeMilestone(milestone: BackendTimelineMilestone): TimelineMilestone {
+  return {
+    ...milestone,
+    citations: milestone.citations.map(normalizeCitation),
+  };
+}
+
+function normalizeTimeline(timeline: BackendTimelineBranch): Timeline {
+  return {
+    ...timeline,
+    milestones: timeline.milestones.map(normalizeMilestone),
+  };
+}
 
 export const useChronosStore = create<ChronosStore>((set, get) => ({
   currentStep: 0,
@@ -284,38 +138,36 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
   optionA: '',
   optionB: '',
   optionC: '',
+  backendStatus: 'unknown',
+  connectStatus: null,
+  errorMessage: null,
   graphData: null,
   simulationData: null,
+  intakeAnalysis: null,
+  digitalTwinProfile: null,
   historicalPrecedents: [],
   externalEvidence: [],
   agentCouncil: null,
+  selectedTimelineId: null,
+  lastIngestionRun: null,
   chatHistory: [],
   isLoading: false,
 
   setStep: (step) => set({ currentStep: step }),
   setActiveSection: (section) => set({ activeSection: section }),
-  setCurtainState: (visible, animatingOut) => set({ isCurtainVisible: visible, isCurtainAnimatingOut: animatingOut }),
-  
-  // Global Transition Manager for entering the App seamlessly
+  setCurtainState: (visible, animatingOut) =>
+    set({ isCurtainVisible: visible, isCurtainAnimatingOut: animatingOut }),
   triggerAppLaunch: () => {
-    // 1. Drop the curtain down
     set({ isCurtainVisible: true, isCurtainAnimatingOut: false });
-    
-    // 2. Wait for it to cover the screen, then swap the content behind it and scroll to top
     setTimeout(() => {
       set({ currentStep: 1 });
       document.getElementById('main-scroll-area')?.scrollTo(0, 0);
-      
-      // 3. Slide the curtain back up
       set({ isCurtainAnimatingOut: true });
-      
-      // 4. Remove it from DOM after animation completes
       setTimeout(() => {
         set({ isCurtainVisible: false });
       }, 1000);
     }, 800);
   },
-
   setDecisionQuestion: (question) => set({ decisionQuestion: question }),
   setDecisionType: (decisionType) => set({ decisionType }),
   setHorizon: (horizon) => set({ horizon }),
@@ -329,142 +181,182 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
   addChatMessage: (msg) =>
     set((state) => ({ chatHistory: [...state.chatHistory, msg] })),
 
+  checkBackendStatus: async () => {
+    try {
+      await chronosApi.ready();
+      set({ backendStatus: 'connected', errorMessage: null });
+    } catch (readyError) {
+      try {
+        await chronosApi.health();
+        set({ backendStatus: 'connected', errorMessage: null });
+      } catch (healthError) {
+        console.warn('Chronos backend health check failed.', { readyError, healthError });
+        set({
+          backendStatus: 'disconnected',
+          errorMessage: 'Backend is disconnected. Start the API on http://localhost:8000.',
+        });
+      }
+    }
+  },
+
+  refreshGraph: async () => {
+    const graph = adaptBackendGraphToFrontendGraph(
+      await chronosApi.getGraph(),
+      get().decisionQuestion,
+    );
+    set({ graphData: graph });
+    return graph;
+  },
+
+  loadDemoWorkspace: async () => {
+    set({ isLoading: true, connectStatus: 'Loading demo workspace...', errorMessage: null });
+    try {
+      const run = await chronosApi.ingestDemo();
+      await get().refreshGraph();
+      set({
+        lastIngestionRun: run,
+        connectStatus: `Demo workspace loaded: ${run.nodes_created} nodes, ${run.edges_created} edges.`,
+        backendStatus: 'connected',
+        isLoading: false,
+        currentStep: 2,
+      });
+    } catch (error) {
+      console.warn('Demo ingestion failed.', error);
+      set({
+        backendStatus: 'disconnected',
+        connectStatus: null,
+        errorMessage: getErrorMessage(error, 'Demo ingestion is unavailable.'),
+        isLoading: false,
+      });
+    }
+  },
+
+  ingestGithubRepo: async (repo) => {
+    set({ isLoading: true, connectStatus: `Ingesting ${repo}...`, errorMessage: null });
+    try {
+      const run = await chronosApi.ingestGithub({ repo });
+      await get().refreshGraph();
+      set({
+        lastIngestionRun: run,
+        connectStatus: `GitHub repo ingested: ${run.nodes_created} nodes, ${run.edges_created} edges.`,
+        backendStatus: 'connected',
+        isLoading: false,
+      });
+    } catch (error) {
+      console.warn('GitHub ingestion failed.', error);
+      set({
+        connectStatus: null,
+        errorMessage: getErrorMessage(error, 'GitHub ingestion is unavailable.'),
+        isLoading: false,
+      });
+    }
+  },
+
+  uploadFiles: async (files) => {
+    set({ isLoading: true, connectStatus: 'Uploading files...', errorMessage: null });
+    try {
+      const run = await chronosApi.ingestUpload(files);
+      await get().refreshGraph();
+      set({
+        lastIngestionRun: run,
+        connectStatus: `Files ingested: ${run.nodes_created} nodes, ${run.edges_created} edges.`,
+        backendStatus: 'connected',
+        isLoading: false,
+      });
+    } catch (error) {
+      console.warn('Upload ingestion failed.', error);
+      set({
+        connectStatus: null,
+        errorMessage: getErrorMessage(error, 'File upload ingestion is unavailable.'),
+        isLoading: false,
+      });
+    }
+  },
+
   runSimulation: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, errorMessage: null });
 
     try {
-      const graphRes = await fetch('http://localhost:8000/graph');
-      if (!graphRes.ok) throw new Error("Backend not reachable");
-      const graphJson = await graphRes.json();
+      const state = get();
+      const simulationRequest = buildSimulationRequest(state);
 
-      const actualGraphData: GraphPayload = {
-        metadata: {
-          generatedAt: new Date().toISOString(),
-          schemaVersion: '1.0.0',
-          query: get().decisionQuestion
-        },
-        nodes: graphJson.nodes.map((n: any) => ({
-          id: n.id,
-          type: n.node_type || 'decision',
-          label: n.label || 'Unknown',
-          veracity: n.evidence_type || 'inference',
-          confidence: n.confidence || 0.5,
-          source: 'agent_inference',
-          citations: [],
-          hasGap: false,
-          hasContradiction: false,
-          summaryText: n.description || ''
-        })),
-        edges: graphJson.edges.map((e: any) => ({
-          id: e.key || Math.random().toString(),
-          source: e.source,
-          target: e.target,
-          type: e.edge_type || 'causal',
-          confidence: e.confidence || 0.5,
-          veracity: e.evidence_type || 'inference',
-          label: e.description || ''
-        }))
-      };
+      let intakeAnalysis: IntakeAnalysis | null = null;
+      try {
+        intakeAnalysis = await chronosApi.analyzeIntake({
+          decisionQuestion: state.decisionQuestion,
+          decisionType: state.decisionType,
+          horizon: state.horizon,
+          risk: state.risk,
+          goal: state.goal,
+          constraints: state.constraints,
+          geography: state.geography,
+          options: getOptions(state),
+          evidenceCount: state.externalEvidence.length,
+          precedentCount: state.historicalPrecedents.length,
+        });
+      } catch (error) {
+        console.warn('/intake/analyze unavailable; continuing simulation.', error);
+      }
+
+      let digitalTwinProfile: DigitalTwinProfile | null = null;
+      try {
+        digitalTwinProfile = await chronosApi.buildDigitalTwin({
+          decisionQuestion: state.decisionQuestion,
+          decisionType: state.decisionType,
+          goal: state.goal,
+          constraints: state.constraints,
+          geography: state.geography,
+          options: getOptions(state),
+          useGraph: true,
+          useEvidence: true,
+        });
+      } catch (error) {
+        console.warn('/digital-twin/build unavailable; continuing simulation.', error);
+      }
+
+      const simulation = await chronosApi.simulate(simulationRequest);
+
+      let graphData = state.graphData;
+      try {
+        graphData = await get().refreshGraph();
+      } catch (error) {
+        console.warn('/graph refresh failed after simulation.', error);
+      }
 
       let historicalPrecedents: HistoricalPrecedent[] = [];
       try {
-        const precedentsRes = await fetch(
-          `http://localhost:8000/query/similar?q=${encodeURIComponent(get().decisionQuestion)}&k=5`
-        );
-        if (precedentsRes.ok) {
-          const precedentsJson = await precedentsRes.json();
-          historicalPrecedents = precedentsJson.items ?? [];
-        }
-      } catch (precedentsErr) {
-        console.warn("Historical precedent lookup failed.", precedentsErr);
+        historicalPrecedents = (await chronosApi.findSimilar(state.decisionQuestion, 5)).items;
+      } catch (error) {
+        console.warn('/query/similar unavailable; continuing without precedents.', error);
       }
 
-      const state = get();
-      const options = [state.optionA, state.optionB, state.optionC]
-        .map((o) => o.trim())
-        .filter((o) => o.length > 0);
-
-      const decisionRequest = {
-        name: state.decisionQuestion,
-        type: state.decisionType,
-        horizon: state.horizon,
-        risk: state.risk,
-        goal: state.goal.trim() || undefined,
-        constraints: state.constraints.trim() || undefined,
-        geography: state.geography.trim() || undefined,
-        options,
+      const simulationData: SimulationPayload = {
+        metadata: simulation.metadata,
+        timelines: simulation.timelines.map(normalizeTimeline),
+        recommendedTimelineId: simulation.recommendedTimelineId,
+        affectedNodeIds: simulation.affectedNodeIds,
+        isDemoEvidence: simulation.isDemoEvidence,
+        evidenceProvider: simulation.evidenceProvider,
       };
 
-      let simulationData: SimulationPayload | null = null;
-      let externalEvidence: ExternalEvidenceItem[] = [];
-      let agentCouncil: AgentCouncil | null = null;
-
-      try {
-        const simRes = await fetch('http://localhost:8000/simulate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(decisionRequest),
-        });
-        if (simRes.ok) {
-          const sim = (await simRes.json()) as SimulationPayload & {
-            externalEvidenceUsed?: ExternalEvidenceItem[];
-            agentCouncil?: AgentCouncil | null;
-          };
-          externalEvidence = sim.externalEvidenceUsed ?? [];
-          agentCouncil = sim.agentCouncil ?? null;
-          simulationData = {
-            ...sim,
-            metadata: { ...sim.metadata, query: get().decisionQuestion },
-          };
-        }
-      } catch (simErr) {
-        console.warn("/simulate unavailable, falling back to /forecast/decision.", simErr);
-      }
-
-      if (!simulationData) {
-        const forecastRes = await fetch('http://localhost:8000/forecast/decision', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(decisionRequest),
-        });
-        if (!forecastRes.ok) throw new Error("Forecast request failed");
-        const forecastData: DecisionForecast = await forecastRes.json();
-        simulationData = adaptForecastToSimulationPayload(forecastData, get().decisionQuestion);
-      }
-
-      if (historicalPrecedents.length === 0) {
-        simulationData = {
-          ...simulationData,
-          timelines: simulationData.timelines.map((t) => ({
-            ...t,
-            confidenceBreakdown: {
-              ...t.confidenceBreakdown,
-              evidenceStrength: clamp01(t.confidenceBreakdown.evidenceStrength * 0.7),
-            },
-          })),
-        };
-      }
-
       set({
-        graphData: actualGraphData,
+        backendStatus: 'connected',
+        graphData,
         simulationData,
+        intakeAnalysis: simulation.intakeAnalysis ?? intakeAnalysis,
+        digitalTwinProfile,
         historicalPrecedents,
-        externalEvidence,
-        agentCouncil,
+        externalEvidence: simulation.externalEvidenceUsed,
+        agentCouncil: simulation.agentCouncil,
+        selectedTimelineId: simulation.recommendedTimelineId,
         isLoading: false,
         currentStep: 3,
       });
-
     } catch (error) {
-      console.warn("Backend not running or failed. Falling back to mock data.", error);
+      console.warn('Simulation failed.', error);
       set({
-        graphData: mockGraphPayload,
-        simulationData: mockSimulationPayload,
-        historicalPrecedents: [],
-        externalEvidence: [],
-        agentCouncil: null,
+        errorMessage: getErrorMessage(error, 'Simulation failed. Confirm the backend is running.'),
         isLoading: false,
-        currentStep: 3,
       });
     }
   },

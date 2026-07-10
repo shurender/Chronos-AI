@@ -2,8 +2,8 @@
 Future Self avatar engine.
 
 Grounds each reply in memory-graph precedents (chunk store) and the External
-Evidence Layer, then produces text either via the Groq LLM wrapper (if
-GROQ_API_KEY is set) or a deterministic, clearly-labelled fallback. Never
+Evidence Layer, then produces text through the configured LLM provider when
+available or a deterministic, clearly-labelled fallback. Never
 crashes: any retrieval or LLM failure degrades gracefully.
 """
 
@@ -11,12 +11,17 @@ from __future__ import annotations
 
 import statistics
 
+from backend import config
+from backend.logging_config import get_logger
+
 from .avatar_schema import (
     AvatarChatRequest,
     AvatarChatResponse,
     AvatarCitation,
     GroundingLabel,
 )
+
+logger = get_logger(__name__)
 
 
 def _clip01(x: float) -> float:
@@ -121,30 +126,28 @@ def _build_prompt(request: AvatarChatRequest, mem_items: list, evidence: list, l
 
 
 def _llm_answer(request: AvatarChatRequest, mem_items: list, evidence: list, label: GroundingLabel):
-    """Return LLM text, or None if the LLM is unavailable/failed."""
+    """Return LLM text, or None if the provider is unavailable/failed (caller
+    then uses the deterministic fallback)."""
     try:
-        from backend.llm import get_chat_model
+        from backend.LLM.llm_service import chat as llm_chat
 
-        model = get_chat_model(temperature=0.3)
-    except Exception:
-        # No GROQ_API_KEY, import error, etc. -> caller uses deterministic fallback.
-        return None
-
-    try:
         prompt = _build_prompt(request, mem_items, evidence, label)
-        response = model.invoke(prompt)
-        content = getattr(response, "content", None)
+        content = llm_chat(prompt, temperature=0.3)
         if isinstance(content, str) and content.strip():
             return content.strip()
         return None
     except Exception:
+        logger.warning(
+            "Configured LLM provider %s unavailable; using deterministic avatar fallback.",
+            config.LLM_PROVIDER,
+        )
         return None
 
 
 def _fallback_answer(request: AvatarChatRequest, mem_items: list, evidence: list, label: GroundingLabel) -> str:
     """Deterministic, clearly-labelled response when the LLM is unavailable."""
     header = (
-        "_(Backend LLM is unavailable — no GROQ_API_KEY — so this is a deterministic, "
+        f"_(Configured LLM provider '{config.LLM_PROVIDER}' is unavailable, so this is a deterministic, "
         "grounded fallback from your Future Self.)_\n\n"
     )
 
@@ -196,6 +199,33 @@ def generate_avatar_reply(request: AvatarChatRequest) -> AvatarChatResponse:
         dict.fromkeys((request.graphNodeIds or []) + [c.nodeId for c in citations])
     )
 
+    # Provenance: record this answer as an auditable ClaimRecord. Best-effort.
+    claim_id = None
+    try:
+        from backend.Provenance.provenance_schema import ClaimRecord
+        from backend.Provenance.provenance_service import create_claim
+
+        uncertainty = (
+            "No grounding retrieved — general reasoning, low confidence."
+            if label == "general_opinion"
+            else f"Grounded via {label}; heuristic, not a guaranteed outcome."
+        )
+        claim = create_claim(
+            ClaimRecord(
+                claim_text=content[:2000],
+                claim_type="prediction" if label != "general_opinion" else "inference",
+                created_by="avatar",
+                source_ids=[m.get("chunk_id") for m in mem_items if m.get("chunk_id")],
+                evidence_ids=[e.id for e in evidence],
+                graph_node_ids=list(request.graphNodeIds or []),
+                confidence=confidence,
+                uncertainty_reason=uncertainty,
+            )
+        )
+        claim_id = claim.claim_id
+    except Exception:
+        claim_id = None
+
     return AvatarChatResponse(
         content=content,
         referencedNodeIds=referenced,
@@ -203,4 +233,5 @@ def generate_avatar_reply(request: AvatarChatRequest) -> AvatarChatResponse:
         groundingLabel=label,
         confidence=confidence,
         llmBacked=llm_backed,
+        claim_id=claim_id,
     )

@@ -11,7 +11,8 @@ from typing import Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from backend.llm import embed_text, get_chat_model
+from backend.llm import embed_text
+from backend.LLM.llm_service import chat as llm_chat
 from backend.schema import (
     CandidateEdges,
     CandidateNodes,
@@ -58,12 +59,12 @@ label (a few words) and a 1-3 sentence description grounded in the chunk text.""
 
 def extract_entities(state: ExtractionState) -> ExtractionState:
     chunk = state["chunk"]
-    llm = get_chat_model().with_structured_output(CandidateNodes)
-    result: CandidateNodes = llm.invoke(
+    result: CandidateNodes = llm_chat(
         [
             ("system", _ENTITY_SYSTEM_PROMPT),
             ("human", f"Chunk text:\n\n{chunk['raw_text']}"),
-        ]
+        ],
+        response_schema=CandidateNodes,
     )
     state["entities"] = [n.model_dump() for n in result.nodes]
     return state
@@ -91,16 +92,16 @@ def propose_edges(state: ExtractionState) -> ExtractionState:
         return state
 
     chunk = state["chunk"]
-    llm = get_chat_model().with_structured_output(CandidateEdges)
     entity_listing = "\n".join(f"- ({e['node_type']}) {e['label']}: {e['description']}" for e in entities)
-    result: CandidateEdges = llm.invoke(
+    result: CandidateEdges = llm_chat(
         [
             ("system", _EDGE_SYSTEM_PROMPT),
             (
                 "human",
                 f"Chunk text:\n\n{chunk['raw_text']}\n\nEntities:\n{entity_listing}",
             ),
-        ]
+        ],
+        response_schema=CandidateEdges,
     )
     state["proposed_edges"] = [e.model_dump() for e in result.edges]
     return state
@@ -135,15 +136,15 @@ def tag_fact_inference_prediction(state: ExtractionState) -> ExtractionState:
         for e in edges
     )
 
-    llm = get_chat_model().with_structured_output(Tags)
-    result: Tags = llm.invoke(
+    result: Tags = llm_chat(
         [
             ("system", _TAG_SYSTEM_PROMPT),
             (
                 "human",
                 f"Source chunk text:\n\n{chunk['raw_text']}\n\nItems to classify:\n{items_listing}",
             ),
-        ]
+        ],
+        response_schema=Tags,
     )
 
     # Match tags back to items by best-effort substring match on label/description.

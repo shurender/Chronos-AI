@@ -11,12 +11,19 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 from .schema import GraphEdge, GraphNode
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
 
-GRAPH_PATH = os.getenv("GRAPH_PATH", str(BASE_DIR / "graph.gpickle"))
-CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", str(BASE_DIR / "chroma_db"))
+# Optional DATA_DIR relocates the default data stores (used by Docker volumes).
+# Explicit GRAPH_PATH / CHROMA_DB_PATH (or CHROMA_PATH alias) still win.
+_DATA_BASE = Path(os.getenv("DATA_DIR")) if os.getenv("DATA_DIR") else BASE_DIR
+
+GRAPH_PATH = os.getenv("GRAPH_PATH", str(_DATA_BASE / "graph.gpickle"))
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH") or os.getenv("CHROMA_PATH") or str(_DATA_BASE / "chroma_db")
 
 import networkx as nx
 
@@ -39,9 +46,7 @@ def add_edge_to_graph(edge: GraphEdge) -> None:
 
 
 def save_graph(path: str = GRAPH_PATH):
-    print("Saving graph to:", path)
-    print("Nodes:", G.number_of_nodes())
-    print("Edges:", G.number_of_edges())
+    logger.info("Saving graph to %s (%d nodes, %d edges)", path, G.number_of_nodes(), G.number_of_edges())
 
     with open(path, "wb") as f:
         pickle.dump(G, f)
@@ -50,10 +55,10 @@ def save_graph(path: str = GRAPH_PATH):
 def load_graph(path: str = GRAPH_PATH):
     global G
 
-    print("GRAPH_PATH =", path)
-    print("Exists =", os.path.exists(path))
+    exists = os.path.exists(path)
+    logger.info("Loading graph from %s (exists=%s)", path, exists)
 
-    if os.path.exists(path):
+    if exists:
         with open(path, "rb") as f:
             loaded_graph = pickle.load(f)
 
@@ -64,8 +69,7 @@ def load_graph(path: str = GRAPH_PATH):
         for u, v, key, data in loaded_graph.edges(keys=True, data=True):
             G.add_edge(u, v, key=key, **data)
 
-    print("Nodes =", G.number_of_nodes())
-    print("Edges =", G.number_of_edges())
+    logger.info("Graph ready: %d nodes, %d edges", G.number_of_nodes(), G.number_of_edges())
 
     return G
 
@@ -98,6 +102,32 @@ def add_node_to_chroma(node: GraphNode, embedding: list[float]) -> None:
 
 def query_similar_chunks(query_embedding: list[float], k: int = 5):
     return chunk_collection.query(query_embeddings=[query_embedding], n_results=k)
+
+
+def delete_chunk(chunk_id: str) -> None:
+    """Remove one chunk's embedding from the vector store (idempotent)."""
+    try:
+        chunk_collection.delete(ids=[chunk_id])
+    except Exception:  # noqa: BLE001 — deletion is best-effort
+        pass
+
+
+def reset_all() -> None:
+    """Clear the in-memory graph, delete the persisted graph file, and empty both
+    Chroma collections IN PLACE (not delete+recreate — other modules hold direct
+    references to these collection objects via `from backend.storage import
+    chunk_collection`, which would go stale if we rebound the name here).
+    Used by POST /ingest/reset — destructive, controlled."""
+    G.clear()
+    if os.path.exists(GRAPH_PATH):
+        os.remove(GRAPH_PATH)
+
+    for collection in (chunk_collection, node_collection):
+        existing_ids = collection.get()["ids"]
+        if existing_ids:
+            collection.delete(ids=existing_ids)
+
+    logger.info("Reset complete: graph and Chroma collections cleared")
 
 
 def query_similar_nodes(query_embedding: list[float], k: int = 5):

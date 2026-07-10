@@ -21,6 +21,8 @@ EvidenceType = Literal[
     "user_supplied",
 ]
 
+SourceKind = Literal["demo", "uploaded", "web"]
+
 
 class EvidenceItem(BaseModel):
     id: str
@@ -34,9 +36,34 @@ class EvidenceItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=list)
 
+    # --- Source quality / provenance (defaults describe curated demo evidence,
+    #     so existing demo_evidence.json loads unchanged) ---
+    source_kind: SourceKind = "demo"
+    retrieved_at: Optional[str] = None  # ISO timestamp when fetched/uploaded, or null
+    freshness_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    source_reliability: float = Field(default=0.5, ge=0.0, le=1.0)
+    is_live_source: bool = False
+    is_demo_source: bool = True
+
+
+class EvidenceUploadRequest(BaseModel):
+    """User-supplied evidence. Either `summary` or `text` must be provided."""
+
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    text: Optional[str] = None  # alias for summary when only raw text is sent
+    domain: str = "user"
+    source_name: str = "User Upload"
+    source_url: Optional[str] = None
+    evidence_type: EvidenceType = "user_supplied"
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    published_at: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
 
 class EvidenceSearchResponse(BaseModel):
     query: Optional[str] = None
     domain: Optional[str] = None
+    provider: str = "demo"
     isDemoPack: bool = True
     items: list[EvidenceItem] = Field(default_factory=list)

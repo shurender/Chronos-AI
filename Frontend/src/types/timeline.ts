@@ -186,4 +186,8 @@ export interface SimulationPayload {
    * Enables incremental graph merges without a full re-fetch.
    */
   readonly affectedNodeIds: readonly GraphNodeId[];
+
+  readonly isDemoEvidence?: boolean;
+
+  readonly evidenceProvider?: string | null;
 }

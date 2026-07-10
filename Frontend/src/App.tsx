@@ -28,7 +28,11 @@ const GithubIcon = ({ className }: { className?: string }) => (
 
 // ── Step 1: Connect Data ──────────────────────────────────────────────────────
 function ConnectDataView() {
-  const setStep = useChronosStore((state) => state.setStep);
+  const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
+  const connectStatus = useChronosStore((state) => state.connectStatus);
+  const errorMessage = useChronosStore((state) => state.errorMessage);
+  const backendStatus = useChronosStore((state) => state.backendStatus);
+  const isLoading = useChronosStore((state) => state.isLoading);
   const sources = [
     { icon: GithubIcon,   label: 'GitHub',   sub: 'Commits & issues'  },
     { icon: SlackIcon,    label: 'Slack',    sub: 'Threads & channels' },
@@ -45,6 +49,9 @@ function ConnectDataView() {
         <p className="mt-3 text-sm leading-relaxed text-gray-500 max-w-lg mx-auto">
           Chronos ingests your decision history from code commits, team
           conversations, and documents to build a living memory graph.
+        </p>
+        <p className={`mt-4 text-xs font-medium ${backendStatus === 'connected' ? 'text-emerald-700' : 'text-amber-700'}`}>
+          Backend {backendStatus === 'connected' ? 'connected' : backendStatus === 'disconnected' ? 'disconnected' : 'checking...'}
         </p>
 
         <div className="mt-10 grid grid-cols-2 gap-4 group">
@@ -63,12 +70,15 @@ function ConnectDataView() {
         </div>
 
         <button
-          onClick={() => setStep(2)}
+          onClick={() => void loadDemoWorkspace()}
+          disabled={isLoading}
           className="mt-10 inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-gray-900 bg-gray-900 px-6 py-4 text-sm font-semibold text-white transition-all duration-200 hover:bg-gray-800"
         >
           <GithubIcon className="size-4" aria-hidden="true" />
-          Connect GitHub &amp; Slack
+          {isLoading ? 'Loading Demo Workspace...' : 'Load Demo Workspace'}
         </button>
+        {connectStatus && <p className="mt-3 text-xs text-emerald-700">{connectStatus}</p>}
+        {errorMessage && <p className="mt-3 text-xs text-red-600">{errorMessage}</p>}
       </div>
     </div>
   );
@@ -82,7 +92,7 @@ const FIELD_CLASS =
 const LABEL_CLASS = 'text-xs font-medium text-gray-600 uppercase tracking-wide';
 
 function DefineDecisionView() {
-  const { decisionQuestion, setDecisionQuestion, decisionType, setDecisionType, horizon, setHorizon, risk, setRisk, goal, setGoal, constraints, setConstraints, geography, setGeography, optionA, setOptionA, optionB, setOptionB, optionC, setOptionC, runSimulation, isLoading } = useChronosStore();
+  const { decisionQuestion, setDecisionQuestion, decisionType, setDecisionType, horizon, setHorizon, risk, setRisk, goal, setGoal, constraints, setConstraints, geography, setGeography, optionA, setOptionA, optionB, setOptionB, optionC, setOptionC, runSimulation, isLoading, errorMessage } = useChronosStore();
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -152,6 +162,7 @@ function DefineDecisionView() {
         <button onClick={() => void runSimulation()} disabled={isLoading || decisionQuestion.trim().length === 0} className="mt-8 inline-flex w-full items-center justify-center rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-35 transition-all hover:bg-gray-800">
           Run Simulation
         </button>
+        {errorMessage && <p className="mt-3 text-xs text-red-600">{errorMessage}</p>}
       </div>
     </div>
   );
@@ -160,7 +171,7 @@ function DefineDecisionView() {
 // ── Panels ───────────────────────────────────────────────────────────────
 function HistoricalPrecedentsPanel() {
   const historicalPrecedents = useChronosStore((state) => state.historicalPrecedents);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="shrink-0 border-b border-gray-200 bg-white px-8 py-3">
@@ -191,14 +202,18 @@ function HistoricalPrecedentsPanel() {
 
 function ExternalEvidencePanel() {
   const externalEvidence = useChronosStore((state) => state.externalEvidence);
-  const [expanded, setExpanded] = useState(true);
+  const simulationData = useChronosStore((state) => state.simulationData);
+  const [expanded, setExpanded] = useState(false);
+  const evidenceLabel = simulationData?.isDemoEvidence
+    ? 'Demo Pack'
+    : simulationData?.evidenceProvider ?? 'Evidence';
 
   return (
     <div className="shrink-0 border-b border-gray-200 bg-gray-50/50 px-8 py-3">
       <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between text-left">
         <span className="flex items-center gap-2">
           <span className="text-xs font-semibold tracking-widest text-gray-600 uppercase">External Evidence</span>
-          <span className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600">Demo Pack</span>
+          <span className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600">{evidenceLabel}</span>
         </span>
         <ChevronDown className={`size-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
@@ -225,7 +240,7 @@ function ExternalEvidencePanel() {
 
 function AgentCouncilPanel() {
   const agentCouncil = useChronosStore((state) => state.agentCouncil);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   if (!agentCouncil) return null;
 
@@ -285,9 +300,9 @@ function SimulateFuturesView() {
             <HistoricalPrecedentsPanel />
             <ExternalEvidencePanel />
             <AgentCouncilPanel />
-            <div className="flex min-h-0 flex-1 gap-6 overflow-x-auto p-8 items-start">
+            <div className="flex min-h-0 flex-1 gap-6 overflow-auto p-8 items-start">
               {simulationData.timelines.map((timeline) => (
-                <TimelineCard key={timeline.id} timeline={timeline} className="h-[90%]" />
+                <TimelineCard key={timeline.id} timeline={timeline} />
               ))}
             </div>
           </section>
@@ -371,21 +386,20 @@ function Curtain({ animatingOut, fadeInOnMount = false }: { animatingOut: boolea
 
 // ── ROOT APP SHELL ────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { label: 'Chronos', step: 0, target: 'chronos-top' },
-  { label: 'Launch Program', step: 1, target: null },
-] as const;
-
 export default function App() {
   const currentStep = useChronosStore((state) => state.currentStep);
   const isLoading = useChronosStore((state) => state.isLoading);
   const setStep = useChronosStore((state) => state.setStep);
+  const checkBackendStatus = useChronosStore((state) => state.checkBackendStatus);
   const activeSection = useChronosStore((state) => state.activeSection);
-  
   const isCurtainVisible = useChronosStore((state) => state.isCurtainVisible);
   const isCurtainAnimatingOut = useChronosStore((state) => state.isCurtainAnimatingOut);
   const triggerAppLaunch = useChronosStore((state) => state.triggerAppLaunch);
   const setCurtainState = useChronosStore((state) => state.setCurtainState);
+
+  useEffect(() => {
+    void checkBackendStatus();
+  }, [checkBackendStatus]);
 
   // Initial Full-Screen Intro Loading Curtain: hold for the shimmer text to
   // read, then fade out smoothly (800ms transition, see Curtain component).
@@ -461,7 +475,7 @@ export default function App() {
         </div>
 
         <nav className="flex-1 flex flex-col items-center gap-16 justify-center w-full">
-          
+
           {/* Chronos Link */}
           <div className="relative w-full h-32 flex justify-center items-center">
             <button
@@ -507,7 +521,7 @@ export default function App() {
 
       {/* ── Main Content Area (Offset by sidebar width: pl-16) ── */}
       <main id="main-scroll-area" className="flex-1 flex flex-col pl-16 relative min-h-0 h-screen overflow-auto bg-gray-50">
-        
+
         {/* Step 0: The Unified Scrolling Landing Page */}
         {currentStep === 0 && <LandingPage onLaunch={handleLaunch} />}
 

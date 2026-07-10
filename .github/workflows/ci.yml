@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev-features]
+  pull_request:
+
+# CI uses mock/deterministic providers only — no secrets required.
+env:
+  LLM_PROVIDER: mock
+  EMBEDDING_PROVIDER: mock
+  EVIDENCE_PROVIDER: demo
+  AGENT_MODE: deterministic
+  DEMO_MODE: "true"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend deps
+        run: pip install -r requirements-cpu.txt
+      - name: Smoke test
+        run: python -m backend.smoke_test
+      - name: API contract tests
+        run: python -m backend.tests.test_contracts
+      - name: Eval smoke subset
+        run: python -m backend.evals.run_evals
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend deps
+        working-directory: Frontend
+        run: npm install
+      - name: Build frontend
+        working-directory: Frontend
+        run: npm run build
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No node_modules committed
+        run: |
+          if git ls-files | grep -E '(^|/)node_modules/' ; then
+            echo "ERROR: node_modules is committed"; exit 1
+          fi
+      - name: No .env committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$' ; then
+            echo "ERROR: a .env file is committed"; exit 1
+          fi

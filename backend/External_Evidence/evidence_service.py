@@ -1,88 +1,85 @@
 """
-Evidence service — loads and searches the curated local demo evidence pack.
+Evidence service — provider-orchestrating facade.
 
-Deterministic keyword/tag scoring (no embeddings, no network). This is a demo
-evidence layer; do NOT present results as live web search.
+Selects an evidence provider from config.EVIDENCE_PROVIDER
+(demo | uploaded | tavily/web | hybrid) and exposes the stable functions the
+rest of the app already calls (search_evidence / get_all_evidence). Demo
+remains the default, so existing behavior is unchanged. Live web failures fall
+back to demo rather than fabricating claims.
 """
 
 from __future__ import annotations
 
-import json
-import re
-from functools import lru_cache
-from pathlib import Path
+from backend import config
+from backend.logging_config import get_logger
 
-from .evidence_schema import EvidenceItem
+from .evidence_schema import EvidenceItem, EvidenceUploadRequest
+from .providers.base import ProviderHealth, ProviderUnavailableError
+from .providers.demo_provider import DemoEvidenceProvider
+from .providers.uploaded_provider import UploadedEvidenceProvider
+from .providers.web_provider import WebEvidenceProvider
 
-BASE_DIR = Path(__file__).resolve().parent
-DEMO_EVIDENCE_PATH = BASE_DIR / "demo_evidence.json"
+logger = get_logger(__name__)
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-# Common words that would otherwise cause spurious "matches" (e.g. an unrelated
-# message sharing "a"/"about"/"the" with an evidence summary). Dropped from both
-# item text and query so only meaningful tokens drive scoring.
-_STOPWORDS = {
-    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "is",
-    "are", "be", "it", "this", "that", "i", "me", "my", "you", "your", "we",
-    "our", "should", "would", "could", "about", "what", "how", "why", "when",
-    "tell", "give", "random", "poem", "story", "if", "do", "does", "did", "can",
-    "will", "at", "as", "by", "from", "into", "vs", "than", "then",
-}
+_demo = DemoEvidenceProvider()
+_uploaded = UploadedEvidenceProvider()
+_web = WebEvidenceProvider()
 
 
-def _tokenize(text: str) -> set[str]:
-    return {t for t in _TOKEN_RE.findall((text or "").lower()) if t not in _STOPWORDS}
+def active_provider_name() -> str:
+    return (config.EVIDENCE_PROVIDER or "demo").strip().lower()
 
 
-@lru_cache(maxsize=1)
-def _load_evidence() -> tuple[EvidenceItem, ...]:
-    with open(DEMO_EVIDENCE_PATH, "r", encoding="utf-8") as f:
-        raw = json.load(f)
-    return tuple(EvidenceItem(**item) for item in raw)
-
-
-def get_all_evidence() -> list[EvidenceItem]:
-    return list(_load_evidence())
-
-
-def _score(item: EvidenceItem, query_tokens: set[str]) -> float:
-    """Overlap of the query tokens against the item's tags/title/summary, lightly
-    weighted by the item's own confidence so stronger evidence ranks higher on ties."""
-    if not query_tokens:
-        return 0.0
-    tag_tokens = {t.lower() for tag in item.tags for t in _TOKEN_RE.findall(tag.lower())}
-    text_tokens = _tokenize(f"{item.title} {item.summary} {item.domain}")
-
-    tag_overlap = len(query_tokens & tag_tokens)
-    text_overlap = len(query_tokens & text_tokens)
-
-    # Tags are curated, so weight them more heavily than free-text matches.
-    overlap = tag_overlap * 2.0 + text_overlap * 1.0
-    if overlap == 0:
-        return 0.0  # no token overlap -> genuinely not a match
-    # Confidence only breaks ties between items that actually overlapped.
-    return overlap + item.confidence * 0.1
+def _dedupe(items: list[EvidenceItem], k: int) -> list[EvidenceItem]:
+    seen: set[str] = set()
+    out: list[EvidenceItem] = []
+    for it in items:
+        key = (it.source_url or it.title or it.id).strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(it)
+    return out[:k]
 
 
 def search_evidence(
     query: str | None = None, domain: str | None = None, k: int = 5
 ) -> list[EvidenceItem]:
-    items = get_all_evidence()
+    mode = active_provider_name()
 
-    if domain:
-        domain_lc = domain.lower()
-        items = [it for it in items if it.domain.lower() == domain_lc]
+    if mode == "uploaded":
+        return _uploaded.search(query, domain, k)
 
-    query_tokens = _tokenize(query or "")
+    if mode in {"web", "tavily"}:
+        try:
+            return _web.search(query, domain, k)
+        except ProviderUnavailableError as exc:
+            logger.warning("Web evidence provider unavailable (%s); falling back to demo.", exc)
+            return _demo.search(query, domain, k)
 
-    if not query_tokens:
-        # No query -> return highest-confidence items (still deterministic).
-        ranked = sorted(items, key=lambda it: it.confidence, reverse=True)
-        return ranked[:k]
+    if mode == "hybrid":
+        combined: list[EvidenceItem] = []
+        try:
+            combined += _web.search(query, domain, k)
+        except ProviderUnavailableError as exc:
+            logger.warning("Live evidence unavailable in hybrid mode (%s); using local evidence.", exc)
+        combined += _demo.search(query, domain, k)
+        combined += _uploaded.search(query, domain, k)
+        return _dedupe(combined, k)
 
-    scored = [(it, _score(it, query_tokens)) for it in items]
-    scored = [pair for pair in scored if pair[1] > 0]
-    # Deterministic ordering: score desc, then id asc for stable ties.
-    scored.sort(key=lambda pair: (-pair[1], pair[0].id))
-    return [it for it, _ in scored[:k]]
+    if mode != "demo":
+        logger.warning("Unknown EVIDENCE_PROVIDER=%r; using demo.", mode)
+    return _demo.search(query, domain, k)
+
+
+def get_all_evidence() -> list[EvidenceItem]:
+    """Full demo pack (backs GET /evidence). Unchanged behavior."""
+    return _demo.all_items()
+
+
+def add_uploaded_evidence(request: EvidenceUploadRequest) -> EvidenceItem:
+    return _uploaded.add(request)
+
+
+def get_provider_health() -> list[ProviderHealth]:
+    return [_demo.health(), _uploaded.health(), _web.health()]

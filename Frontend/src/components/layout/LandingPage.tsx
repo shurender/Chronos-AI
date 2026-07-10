@@ -35,9 +35,9 @@ function FadeInBlock({ children, delay = 0 }: { children: React.ReactNode; delay
   }, []);
 
   return (
-    <div 
-      ref={ref} 
-      className={`transition-all duration-1000 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`} 
+    <div
+      ref={ref}
+      className={`transition-all duration-1000 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
@@ -53,9 +53,6 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
   // Prefer the curtain-aware transition passed down from App; fall back to
   // the raw store action so this component still works standalone.
   const launch = onLaunch ?? triggerAppLaunch;
-
-  // Duplicate features so the marquee loops seamlessly
-  const LOOPED_FEATURES = [...FEATURES, ...FEATURES];
 
   // Scroll Spy for Sidebar
   useEffect(() => {
@@ -80,19 +77,19 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
 
   return (
     <div className="flex flex-col bg-white text-gray-900 w-full">
-      
+
       {/* ── Section 1: Hero & Marquee ── */}
       <section id="chronos-top" className="min-h-screen flex flex-col justify-between pt-20">
         <div className="flex-1 flex flex-col justify-center px-10 md:px-20 max-w-7xl">
           <p className="text-xs tracking-[0.2em] text-gray-400 uppercase mb-6 font-medium">
             Decision Intelligence, Reconsidered
           </p>
-          
+
           <div className="relative h-48 md:h-[14rem] lg:h-[18rem] mb-4">
-            
+
             {/* Default State: Chronos Engine */}
-            <div 
-              className={`absolute inset-0 transition-all duration-700 ease-out 
+            <div
+              className={`absolute inset-0 transition-all duration-700 ease-out
                 ${!hoveredFeature ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-4 pointer-events-none'}`}
             >
               <h1 className="text-6xl md:text-8xl lg:text-[9rem] font-serif font-normal tracking-tighter leading-[0.85] mb-8 text-gray-900">
@@ -105,7 +102,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
 
             {/* Dynamic Hover States */}
             {FEATURES.map((f) => (
-              <div 
+              <div
                 key={f.title}
                 className={`absolute inset-0 transition-all duration-700 ease-out
                   ${hoveredFeature?.title === f.title ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
@@ -147,7 +144,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
                     key={`set${setIndex}-${i}`}
                     onMouseEnter={() => setHoveredFeature(f)}
                     onMouseLeave={() => setHoveredFeature(null)}
-                    className="w-80 flex-shrink-0 p-6 bg-white border border-gray-100 shadow-sm transition-all duration-500 
+                    className="w-80 flex-shrink-0 p-6 bg-white border border-gray-100 shadow-sm transition-all duration-500
                               hover:!opacity-100 hover:scale-105 cursor-default"
                     style={{ opacity: hoveredFeature && hoveredFeature.title !== f.title ? 0.3 : 1 }}
                   >
@@ -204,7 +201,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
             <p className="text-4xl md:text-5xl font-serif font-normal">Seamless ingestion to simulation.</p>
           </div>
         </FadeInBlock>
-        
+
         <FadeInBlock delay={150}>
           <div className="w-full max-w-5xl aspect-video bg-gray-200 rounded-xl border border-gray-300 shadow-xl flex items-center justify-center relative overflow-hidden">
             <div className="text-center">
@@ -226,7 +223,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
             Frequently Asked Questions
           </h2>
         </FadeInBlock>
-        
+
         <div className="space-y-12">
           <FadeInBlock delay={100}>
             <div className="border-b border-gray-200 pb-10">

@@ -12,12 +12,20 @@ once the deterministic contract is locked in.
 
 from __future__ import annotations
 
+import hashlib
 import statistics
+import time
 
+from backend.Digital_Twin.digital_twin_schema import DigitalTwinProfile
 from backend.External_Evidence.evidence_schema import EvidenceItem
-from backend.schema import AgentDisagreement, SimulationRequest, TimelineBranch
+from backend.simulation_schema import AgentDisagreement, SimulationRequest, TimelineBranch
 
-from .agent_schema import AgentCouncil, AgentOutput
+from .agent_schema import (
+    AgentCouncil,
+    AgentOutput,
+    AgentRunTrace,
+    LLMAgentEnrichment,
+)
 
 # Tags that lean a market signal toward "act" vs "hold" — used only to derive a
 # direction from evidence the MarketAgent was actually given (never invented).
@@ -81,8 +89,14 @@ def _historian(request: SimulationRequest, precedents: list[dict]) -> tuple[Agen
     )
 
 
-def _behavioral(request: SimulationRequest, precedents: list[dict]) -> tuple[AgentOutput, float]:
-    if not precedents:
+def _behavioral(
+    request: SimulationRequest,
+    precedents: list[dict],
+    twin: DigitalTwinProfile | None = None,
+) -> tuple[AgentOutput, float]:
+    twin_signal = bool(twin and (twin.behavioral_patterns or twin.execution_style.style != "insufficient data"))
+
+    if not precedents and not twin_signal:
         return (
             AgentOutput(
                 agent_id="behavioral",
@@ -111,23 +125,38 @@ def _behavioral(request: SimulationRequest, precedents: list[dict]) -> tuple[Age
     coverage = _clip01(len(precedents) / 3.0)
     citations = [p.get("chunk_id") for p in precedents[:3] if p.get("chunk_id")]
 
+    position = (
+        f"Your stated risk tolerance ({risk}/100) and {len(precedents)} prior decision(s) "
+        f"suggest a {tendency} execution style."
+    )
+    rationale = [
+        f"Risk tolerance {risk}/100 maps to a {tendency.split(',')[0]} profile.",
+        "Inference is weighted by how much personal history is available.",
+    ]
+    confidence = _clip01(0.25 + coverage * 0.45)
+    concerns = [] if coverage >= 0.66 else ["Limited history — behavioral read is provisional."]
+
+    if twin_signal:
+        position += f" Digital twin profile ({twin.subject_type}) reads: {twin.execution_style.style}."
+        rationale.append(f"Digital twin execution style: {twin.execution_style.style}.")
+        for pattern in twin.behavioral_patterns[:2]:
+            rationale.append(f"Twin behavioral signal: {pattern.label} (confidence {pattern.confidence:.2f}).")
+            citations.extend(pattern.citations)
+        citations = list(dict.fromkeys(citations))
+        # Independent corroboration from the twin lifts confidence and clears
+        # the "provisional" flag even when the raw precedent count is thin.
+        confidence = _clip01(confidence + 0.15)
+        concerns = [c for c in concerns if c != "Limited history — behavioral read is provisional."]
+
     return (
         AgentOutput(
             agent_id="behavioral",
             agent_label="Behavioral Agent",
-            position=(
-                f"Your stated risk tolerance ({risk}/100) and {len(precedents)} prior decision(s) "
-                f"suggest a {tendency} execution style."
-            ),
-            confidence=_clip01(0.25 + coverage * 0.45),
-            rationale=[
-                f"Risk tolerance {risk}/100 maps to a {tendency.split(',')[0]} profile.",
-                "Inference is weighted by how much personal history is available.",
-            ],
+            position=position,
+            confidence=confidence,
+            rationale=rationale,
             citations=citations,
-            concerns=(
-                [] if coverage >= 0.66 else ["Limited history — behavioral read is provisional."]
-            ),
+            concerns=concerns,
         ),
         (risk - 50) / 50.0 * 0.6,
     )
@@ -206,23 +235,39 @@ def _market(evidence: list[EvidenceItem]) -> tuple[AgentOutput, float]:
     total = pos_hits + neg_hits
     lean = ((pos_hits - neg_hits) / total) if total else 0.0
 
+    # Distinguish provenance: demo vs uploaded vs live. MarketAgent must be
+    # explicit that demo/uploaded evidence is NOT live web data.
+    demo_n = sum(1 for e in evidence if e.is_demo_source)
+    uploaded_n = sum(1 for e in evidence if e.source_kind == "uploaded")
+    live_n = sum(1 for e in evidence if e.is_live_source)
+    kind_bits = []
+    if demo_n:
+        kind_bits.append(f"{demo_n} demo")
+    if uploaded_n:
+        kind_bits.append(f"{uploaded_n} uploaded")
+    if live_n:
+        kind_bits.append(f"{live_n} live")
+    provenance = ", ".join(kind_bits) or "unknown"
+
+    concerns = [] if len(evidence) >= 3 else ["Thin evidence base — market read is directional only."]
+    if live_n == 0:
+        concerns.append("No live web evidence — findings rest on demo/uploaded sources only.")
+
     return (
         AgentOutput(
             agent_id="market",
             agent_label="Market Agent",
             position=(
-                f"{len(evidence)} external evidence item(s) are relevant. Strongest signal: "
-                f"\"{top.title}\"."
+                f"{len(evidence)} external evidence item(s) are relevant ({provenance}). "
+                f"Strongest signal: \"{top.title}\"."
             ),
             confidence=_clip01(0.35 + avg_conf * 0.5),
             rationale=[
                 f"Average confidence of cited evidence: {avg_conf:.0%}.",
-                "All claims are grounded in the External Evidence Layer (demo pack), not model priors.",
+                f"Evidence provenance: {provenance}. Claims come only from the External Evidence Layer, not model priors.",
             ],
             citations=citations,
-            concerns=(
-                [] if len(evidence) >= 3 else ["Thin evidence base — market read is directional only."]
-            ),
+            concerns=concerns,
         ),
         lean * 0.8,
     )
@@ -233,6 +278,8 @@ def _risk(
     forecast_context: dict,
     precedents: list[dict],
     evidence: list[EvidenceItem],
+    twin: DigitalTwinProfile | None = None,
+    intake_missing_fields: list[str] | None = None,
 ) -> tuple[AgentOutput, float]:
     failure = float(forecast_context.get("failure_share", 0.0))
     top_risks = forecast_context.get("top_risks", []) or []
@@ -246,20 +293,37 @@ def _risk(
         concerns.append(f"Stated constraint to respect: {request.constraints}.")
     if failure >= 30:
         concerns.append(f"Modeled failure share is elevated ({failure:.0f}%).")
-    if not concerns:
-        concerns.append("No blocking gaps detected, but forecasts remain heuristic.")
+    for field in (intake_missing_fields or [])[:4]:
+        concerns.append(f"Missing decision context: {field} (Chronos is assuming a default).")
 
     citations = [p.get("chunk_id") for p in precedents[:2] if p.get("chunk_id")]
+    position = (
+        f"Modeled failure share is {failure:.0f}%. Primary pressure points: "
+        f"{', '.join(top_risks) if top_risks else 'n/a'}."
+    )
+    confidence = _clip01(0.5 + failure / 200.0)
+
+    if twin:
+        # RiskAgent's job is to surface gaps, not hide them — so the twin's own
+        # missing_information/contradictions become concerns here, verbatim.
+        concerns.extend(f"Digital twin gap: {gap}" for gap in twin.missing_information[:3])
+        concerns.extend(f"Digital twin contradiction: {c}" for c in twin.contradictions[:2])
+        if twin.risk_profile.level != "unknown":
+            position += f" Digital twin risk profile: {twin.risk_profile.level} (score {twin.risk_profile.score:.2f})."
+            blended = _clip01((failure / 100.0) * 0.6 + twin.risk_profile.score * 0.4)
+            confidence = _clip01(0.5 + blended / 2.0)
+            citations.extend(twin.source_chunk_ids[:3])
+        citations = list(dict.fromkeys(citations))
+
+    if not concerns:
+        concerns.append("No blocking gaps detected, but forecasts remain heuristic.")
 
     return (
         AgentOutput(
             agent_id="risk",
             agent_label="Risk Agent",
-            position=(
-                f"Modeled failure share is {failure:.0f}%. Primary pressure points: "
-                f"{', '.join(top_risks) if top_risks else 'n/a'}."
-            ),
-            confidence=_clip01(0.5 + failure / 200.0),
+            position=position,
+            confidence=confidence,
             rationale=[
                 "Downside is estimated from the heuristic forecast, not observed outcomes.",
                 "Missing precedents or evidence widen the true uncertainty band.",
@@ -277,6 +341,7 @@ def _strategist(
     recommended_branch_id: str,
     analysts: list[AgentOutput],
     consensus: float,
+    intake_low_completeness: bool = False,
 ) -> tuple[AgentOutput, float]:
     rec = next((b for b in branches if b.id == recommended_branch_id), branches[0] if branches else None)
 
@@ -288,20 +353,37 @@ def _strategist(
         else "No agent raised a blocking concern."
     )
 
+    # Rank branches by the same probability-vs-regret score used to recommend,
+    # so the recommendation can name what it beat (explainable, option-aware).
+    ranked = sorted(
+        branches, key=lambda b: b.probabilityScore * 0.6 - b.expectedRegret * 0.4, reverse=True
+    )
+    runner_up = next((b for b in ranked if b.id != recommended_branch_id), None)
+
     if rec is None:
         position = "No branches were generated to recommend."
         confidence = 0.2
     else:
-        position = (
-            f"Recommended path: {rec.title} "
-            f"(probability {rec.probabilityScore * 100:.0f}%, expected regret {rec.expectedRegret * 100:.0f}%). "
-            f"{dissent_note}"
+        compare = (
+            f" Chosen over {runner_up.title} ({runner_up.probabilityScore * 100:.0f}% / "
+            f"regret {runner_up.expectedRegret * 100:.0f}%)."
+            if runner_up
+            else ""
         )
+        position = (
+            f"Recommended among {len(branches)} option(s): {rec.title} "
+            f"(probability {rec.probabilityScore * 100:.0f}%, expected regret {rec.expectedRegret * 100:.0f}%)."
+            f"{compare} {dissent_note}"
+        )
+        if intake_low_completeness:
+            position += " This recommendation is provisional — key decision context is missing."
         confidence = _clip01(0.35 + rec.probabilityScore * 0.4 + consensus * 0.25)
 
     concerns = []
     if consensus < 0.5:
         concerns.append("Council is divided; treat the recommendation as provisional.")
+    if intake_low_completeness:
+        concerns.append("Recommendation rests on assumed context (low intake completeness).")
 
     citations = sorted({c for a in analysts for c in a.citations})[:6]
 
@@ -334,6 +416,149 @@ def _consensus(analysts: list[tuple[AgentOutput, float]]) -> float:
     return _clip01(0.45 * mean_conf + 0.55 * directional_agreement)
 
 
+# ---------------------------------------------------------------------------
+# Optional LLM enrichment (AGENT_MODE=llm|hybrid). Deterministic output above is
+# always the baseline and the fallback — bad/empty LLM output cannot break it.
+# ---------------------------------------------------------------------------
+
+_AGENT_ROLES = {
+    "historian": "You are the Historian: reason ONLY from the provided historical precedents.",
+    "behavioral": "You are the Behavioral analyst: infer decision/execution style from the digital twin and history.",
+    "domain": "You are the Domain expert for this decision type.",
+    "market": "You are the Market analyst: use ONLY the provided evidence snapshot; NEVER invent market facts. If evidence is thin, say so.",
+    "risk": "You are the Risk analyst: surface downside, missing evidence, and uncertainty explicitly.",
+    "strategist": "You are the Strategist: synthesize and recommend, but PRESERVE dissent — never hide uncertainty.",
+}
+
+
+def _allowed_citation_ids(
+    evidence: list[EvidenceItem], precedents: list[dict], branches: list[TimelineBranch]
+) -> set[str]:
+    ids: set[str] = {e.id for e in evidence}
+    ids |= {p.get("chunk_id") for p in precedents if p.get("chunk_id")}
+    ids |= {nid for b in branches for nid in b.anchorNodeIds}
+    return ids
+
+
+def _build_agent_prompt(agent_id: str, det: AgentOutput, context_text: str, allowed_ids: set[str]) -> str:
+    return (
+        f"{_AGENT_ROLES.get(agent_id, 'You are a decision analyst.')}\n\n"
+        "Enrich the baseline analysis below. Hard rules:\n"
+        "- Cite ONLY from these allowed ids; never invent ids: "
+        f"{sorted(allowed_ids)[:20]}\n"
+        "- Make no factual claim you cannot ground in the provided context.\n"
+        "- Keep or add concerns; never remove uncertainty or dissent.\n"
+        "- Return JSON: position(str), rationale(list[str]), concerns(list[str]), "
+        "citations(list[str]), confidence(0-1).\n\n"
+        f"Baseline position: {det.position}\n"
+        f"Baseline concerns: {det.concerns}\n\n"
+        f"Decision context:\n{context_text}"
+    )
+
+
+def _merge_enrichment(
+    det: AgentOutput, enrichment: LLMAgentEnrichment, allowed_ids: set[str], mode: str
+) -> AgentOutput:
+    # Guardrail: citations restricted to the allowed provenance pool.
+    llm_citations = [c for c in enrichment.citations if c in allowed_ids]
+    citations = list(dict.fromkeys(list(det.citations) + llm_citations))
+    # Deterministic concerns are always preserved (RiskAgent missing-context,
+    # Strategist dissent), then merged with any LLM concerns.
+    concerns = list(dict.fromkeys(list(det.concerns) + [c for c in enrichment.concerns if c.strip()]))
+
+    llm_pos = (enrichment.position or "").strip()
+    llm_rationale = [r for r in enrichment.rationale if r.strip()]
+
+    if mode == "hybrid":
+        # Deterministic baseline stays authoritative; LLM only appends rationale.
+        position = det.position
+        rationale = list(dict.fromkeys(list(det.rationale) + llm_rationale))
+        confidence = (
+            det.confidence if enrichment.confidence is None else _clip01((det.confidence + enrichment.confidence) / 2)
+        )
+    else:  # "llm"
+        position = llm_pos or det.position  # keep deterministic if LLM empty
+        rationale = llm_rationale or list(det.rationale)
+        confidence = det.confidence if enrichment.confidence is None else _clip01(enrichment.confidence)
+
+    return AgentOutput(
+        agent_id=det.agent_id,
+        agent_label=det.agent_label,
+        position=position,
+        confidence=confidence,
+        rationale=rationale,
+        citations=citations,
+        concerns=concerns,
+    )
+
+
+def _enrich_with_llm(
+    det: AgentOutput, context_text: str, allowed_ids: set[str], mode: str
+) -> tuple[AgentOutput, AgentRunTrace]:
+    """Enrich one deterministic AgentOutput with the LLM. Any failure (provider
+    down, invalid/unparseable output) falls back to the deterministic output and
+    is recorded in the trace — it can never raise."""
+    from backend import config
+    from backend.LLM import llm_service
+
+    provider = config.LLM_PROVIDER
+    model = ""
+    prompt = _build_agent_prompt(det.agent_id, det, context_text, allowed_ids)
+    prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+    input_summary = f"{det.agent_id}: {context_text[:120]}"
+
+    t0 = time.perf_counter()
+    output, valid, fallback = det, False, True
+    try:
+        try:
+            model = getattr(llm_service.get_chat_provider(), "model_name", "") or ""
+        except Exception:
+            model = ""
+        enrichment = llm_service.chat(prompt, temperature=0.2, response_schema=LLMAgentEnrichment)
+        if isinstance(enrichment, LLMAgentEnrichment):
+            output = _merge_enrichment(det, enrichment, allowed_ids, mode)
+            valid, fallback = True, False
+    except Exception:
+        output, valid, fallback = det, False, True
+
+    trace = AgentRunTrace(
+        agent_id=det.agent_id,
+        provider=provider,
+        model=model,
+        prompt_hash=prompt_hash,
+        input_summary=input_summary[:200],
+        output_valid=valid,
+        fallback_used=fallback,
+        latency_ms=int((time.perf_counter() - t0) * 1000),
+    )
+    return output, trace
+
+
+def _council_context_text(
+    request: SimulationRequest,
+    precedents: list[dict],
+    evidence: list[EvidenceItem],
+    branches: list[TimelineBranch],
+    twin: DigitalTwinProfile | None,
+) -> str:
+    parts = [f"Decision: {request.name} (type={request.type}, horizon={request.horizon}, goal={request.goal})."]
+    if twin:
+        parts.append(
+            f"Digital twin: {twin.subject_type}, risk={twin.risk_profile.level}, "
+            f"execution={twin.execution_style.style}."
+        )
+    parts.append(
+        "Precedents: "
+        + ("; ".join(f"[{p.get('chunk_id')}] {(p.get('snippet') or '')[:80]}" for p in precedents[:3]) or "none")
+    )
+    parts.append(
+        "Evidence snapshot: "
+        + ("; ".join(f"[{e.id}] {e.title}" for e in evidence[:4]) or "none")
+    )
+    parts.append("Branches: " + "; ".join(f"{b.title} ({b.probabilityScore:.0%})" for b in branches[:4]))
+    return "\n".join(parts)
+
+
 def run_agent_council(
     request: SimulationRequest,
     precedents: list[dict],
@@ -341,26 +566,63 @@ def run_agent_council(
     branches: list[TimelineBranch],
     recommended_branch_id: str,
     forecast_context: dict,
+    twin: DigitalTwinProfile | None = None,
+    intake_missing_fields: list[str] | None = None,
+    intake_low_completeness: bool = False,
+    agent_mode: str = "deterministic",
 ) -> AgentCouncil:
     analysts = [
         _historian(request, precedents),
-        _behavioral(request, precedents),
+        _behavioral(request, precedents, twin),
         _domain(request),
         _market(evidence),
-        _risk(request, forecast_context, precedents, evidence),
+        _risk(request, forecast_context, precedents, evidence, twin, intake_missing_fields),
     ]
 
-    consensus = _consensus(analysts)
+    consensus = _consensus(analysts)  # kept deterministic/numeric for stability
 
     strategist_output, _ = _strategist(
-        request, branches, recommended_branch_id, [o for o, _ in analysts], consensus
+        request,
+        branches,
+        recommended_branch_id,
+        [o for o, _ in analysts],
+        consensus,
+        intake_low_completeness,
     )
 
     agents = [o for o, _ in analysts] + [strategist_output]
+    mode = (agent_mode or "deterministic").strip().lower()
+    traces: list[AgentRunTrace] = []
 
+    if mode in ("llm", "hybrid"):
+        allowed_ids = _allowed_citation_ids(evidence, precedents, branches)
+        context_text = _council_context_text(request, precedents, evidence, branches, twin)
+        enriched: list[AgentOutput] = []
+        for det in agents:
+            # MarketAgent guardrail: with no evidence, never let the LLM assert a
+            # market claim — keep the deterministic refusal.
+            if det.agent_id == "market" and not evidence:
+                enriched.append(det)
+                traces.append(
+                    AgentRunTrace(
+                        agent_id="market",
+                        provider="(skipped)",
+                        model="",
+                        output_valid=False,
+                        fallback_used=True,
+                        input_summary="no evidence — deterministic refusal kept",
+                    )
+                )
+                continue
+            out, trace = _enrich_with_llm(det, context_text, allowed_ids, mode)
+            enriched.append(out)
+            traces.append(trace)
+        agents = enriched
+
+    is_deterministic = not any(not t.fallback_used for t in traces)
     summary = (
-        f"{len(agents)} deterministic agents evaluated this decision; consensus "
-        f"{consensus:.0%}. {strategist_output.position}"
+        f"{len(agents)} agents evaluated this decision (mode={mode}); consensus "
+        f"{consensus:.0%}. {agents[-1].position if agents else ''}"
     )
 
     return AgentCouncil(
@@ -368,6 +630,9 @@ def run_agent_council(
         recommendedBranchId=recommended_branch_id,
         consensusScore=round(consensus, 3),
         summary=summary,
+        mode=mode,
+        isDeterministic=is_deterministic,
+        traces=traces,
     )
 
 

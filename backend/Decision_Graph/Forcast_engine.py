@@ -24,10 +24,12 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import uuid
 
 from backend.Agents.agent_council import council_to_disagreements, run_agent_council
 from backend.External_Evidence.evidence_schema import EvidenceItem
-from backend.External_Evidence.evidence_service import search_evidence
+from backend.External_Evidence.evidence_service import active_provider_name, search_evidence
+from backend.simulation_schema import Assumption, DecisionOption
 from backend.schema import (
     Citation,
     ConfidenceBreakdown,
@@ -290,7 +292,7 @@ def _ground_in_graph(request: DecisionForecastRequest, k: int = 3) -> list[Groun
     """Best-effort: look for similar past decisions already sitting in the graph's
     chunk store. Never raises — grounding is a nice-to-have, not a dependency."""
     try:
-        from query_layer import find_similar_past_decisions
+        from .query_layer import find_similar_past_decisions
 
         query = f"{request.name}. {request.goal}"
         results = find_similar_past_decisions(query, k=k)
@@ -386,10 +388,13 @@ def _branch_confidence(
     horizon_months: int,
     dist: dict[str, float],
     evidence: list[EvidenceItem],
+    assumption_conf: float = 0.5,
+    twin_completeness: float = 0.0,
+    precedent_strength: float = 0.0,
 ) -> ConfidenceBreakdown:
     grounded = forecast.groundedOn
 
-    evidence_strength = _clip(len(grounded) / 3.0, 0.0, 1.0)
+    grounded_strength = _clip(len(grounded) / 3.0, 0.0, 1.0)
 
     if grounded:
         avg_distance = sum(g.distance for g in grounded) / len(grounded)
@@ -402,20 +407,28 @@ def _branch_confidence(
 
     temporal = _clip(1.0 - horizon_months / 120.0, 0.0, 1.0)
 
-    # External demo evidence lifts source reliability (by count AND confidence)
-    # and temporal relevance (external signals are more current than the graph).
+    # External evidence lifts source reliability (by count AND confidence) and
+    # temporal relevance (external signals are more current than the graph).
     evidence_coverage = _clip(len(evidence) / 4.0, 0.0, 1.0)  # 4+ items = full coverage
     avg_evidence_conf = (
         sum(e.confidence for e in evidence) / len(evidence) if evidence else 0.0
     )
     source = _clip(source + evidence_coverage * avg_evidence_conf * 0.4, 0.0, 1.0)
+    source = _clip(source + precedent_strength * 0.15, 0.0, 1.0)  # historical precedent strength
     temporal = _clip(temporal + evidence_coverage * 0.15, 0.0, 1.0)
+
+    # Evidence strength blends graph grounding, evidence coverage, and how
+    # confident this branch's own assumptions are.
+    evidence_strength = _clip(
+        0.4 * grounded_strength + 0.3 * evidence_coverage + 0.3 * assumption_conf, 0.0, 1.0
+    )
 
     if forecast.riskHeatmap:
         avg_risk = sum(r.level for r in forecast.riskHeatmap) / len(forecast.riskHeatmap)
     else:
         avg_risk = 50.0
     causal = _clip(1.0 - avg_risk / 100.0, 0.0, 1.0)
+    causal = _clip(causal + twin_completeness * 0.15, 0.0, 1.0)  # digital twin completeness
 
     return ConfidenceBreakdown(
         evidenceStrength=round(evidence_strength, 3),
@@ -426,41 +439,343 @@ def _branch_confidence(
     )
 
 
+# Semantic milestone scaffold (month, type, event template) — clipped to horizon.
+_MILESTONE_TEMPLATES: list[tuple[int, str, str]] = [
+    (0, "decision_point", "Commit to {title}: define the experiment and success criteria"),
+    (3, "outcome_realized", "First validation signal — early demand/traction check"),
+    (6, "project_phase", "Resource & market check — reassess runway and fit"),
+    (12, "outcome_realized", "Outcome divergence — the trajectory becomes distinguishable"),
+    (24, "external_event", "Scale-or-exit checkpoint"),
+]
+
+
+def _nearest_success(forecast: DecisionForecast, month: int) -> float | None:
+    best: tuple[int, float] | None = None
+    for p in forecast.successForecast:
+        pm = int(p.month.lstrip("M") or 0)
+        if best is None or abs(pm - month) < abs(best[0] - month):
+            best = (pm, p.value)
+    return best[1] if best else None
+
+
 def _branch_milestones(
-    title: str, forecast: DecisionForecast, citations: list[Citation]
+    title: str, forecast: DecisionForecast, citations: list[Citation], horizon_months: int
 ) -> list[TimelineMilestone]:
     milestones: list[TimelineMilestone] = []
-    for i, point in enumerate(forecast.successForecast):
-        month = int(point.month.lstrip("M") or 0)
-        mtype = "decision_point" if i == 0 else "outcome_realized"
+    used_months: set[int] = set()
+
+    def _add(month: int, mtype: str, event: str) -> None:
+        val = _nearest_success(forecast, month)
+        text = event if val is None else f"{event} (modeled success ~{val:.0f}%)"
+        used_months.add(month)
         milestones.append(
             TimelineMilestone(
                 month=month,
-                event=f"{title}: month {month} — modeled success likelihood {point.value:.1f}%",
+                event=text,
                 type=mtype,
                 veracity="prediction",
                 citations=citations,
                 dataSparsity=0.35 if citations else 0.75,
             )
         )
+
+    for month, mtype, template in _MILESTONE_TEMPLATES:
+        if month <= horizon_months:
+            _add(month, mtype, template.format(title=title))
+
+    if horizon_months not in used_months:
+        _add(horizon_months, "outcome_realized", f"Horizon outcome — {title} result crystallizes")
+
     return milestones
 
 
-def generate_simulation(request: SimulationRequest) -> SimulationResponse:
+def _effective_risk(request: SimulationRequest, option: DecisionOption) -> int:
+    """Per-option risk: lower reversibility and more known risks -> higher risk."""
+    risk = float(request.risk)
+    if option.reversibility is not None:
+        risk += (0.5 - option.reversibility) * 40.0
+    risk += min(len(option.known_risks) * 5.0, 15.0)
+    return int(_clip(risk, 0.0, 100.0))
+
+
+def _build_assumptions(
+    ident: str,
+    option: DecisionOption | None,
+    request: SimulationRequest,
+    evidence: list[EvidenceItem],
+    twin,
+    dist: dict[str, float],
+    horizon_months: int,
+) -> list["Assumption"]:
+    evidence_ids = [e.id for e in evidence[:3]]
+    evidence_conf = (sum(e.confidence for e in evidence) / len(evidence)) if evidence else 0.4
+    twin_conf = twin.confidenceBreakdown.overallConfidence if twin else 0.4
+
+    resource_stmt = "Available resources (capital, team, time) are sufficient to execute this path."
+    if option and option.upfront_cost:
+        resource_stmt = (
+            f"The upfront cost ({option.upfront_cost}) and available resources are sufficient to execute."
+        )
+
+    assumptions = [
+        Assumption(
+            id=f"asm_market_{ident}",
+            statement=f"There is enough market demand to make '{request.name}' viable within {horizon_months} months.",
+            type="market",
+            confidence=round(_clip(0.3 + evidence_conf * 0.5, 0.0, 1.0), 3),
+            evidenceIds=evidence_ids,
+            riskIfWrong="Demand fails to materialize; the branch underperforms its modeled upside.",
+        ),
+        Assumption(
+            id=f"asm_resource_{ident}",
+            statement=resource_stmt,
+            type="resource",
+            confidence=round(_clip(0.3 + twin_conf * 0.5, 0.0, 1.0), 3),
+            evidenceIds=[],
+            riskIfWrong="Runway or capacity runs out before the path reaches an outcome.",
+        ),
+        Assumption(
+            id=f"asm_timing_{ident}",
+            statement=f"The {request.horizon} horizon is long enough for results to become distinguishable.",
+            type="timing",
+            confidence=round(_clip(1.0 - horizon_months / 150.0, 0.0, 1.0), 3),
+            evidenceIds=[],
+            riskIfWrong="Signal arrives later than modeled; early checkpoints mislead.",
+        ),
+    ]
+    if twin and twin.execution_style.style != "insufficient data":
+        assumptions.append(
+            Assumption(
+                id=f"asm_behavior_{ident}",
+                statement=f"Execution follows the observed pattern: {twin.execution_style.style}.",
+                type="behavior",
+                confidence=round(_clip(0.3 + twin_conf * 0.4, 0.0, 1.0), 3),
+                evidenceIds=twin.source_chunk_ids[:2],
+                riskIfWrong="Execution discipline differs from history, changing follow-through.",
+            )
+        )
+    return assumptions
+
+
+def _risk_factors(forecast: DecisionForecast, option: DecisionOption | None) -> list[str]:
+    top = [r.label for r in sorted(forecast.riskHeatmap, key=lambda x: x.level, reverse=True)[:3]]
+    factors = [f"Elevated {r.lower()} risk" for r in top]
+    if option:
+        factors += [f"Known risk: {kr}" for kr in option.known_risks[:3]]
+    return factors
+
+
+def _upside_factors(dist: dict[str, float], option: DecisionOption | None) -> list[str]:
+    upside = dist.get("Strong", 0.0) + dist.get("Breakout", 0.0)
+    factors = [f"~{upside:.0f}% modeled chance of a strong/breakout outcome"]
+    if option and option.expected_upside:
+        factors.append(f"Stated upside: {option.expected_upside}")
+    return factors
+
+
+def _failure_modes(forecast: DecisionForecast, dist: dict[str, float]) -> list[str]:
+    failure = dist.get("Failure", 0.0)
+    top = [r.label for r in sorted(forecast.riskHeatmap, key=lambda x: x.level, reverse=True)[:2]]
+    modes = [f"Runs out of runway before an outcome (~{failure:.0f}% modeled failure share)"]
+    modes += [f"{r} pressure derails execution" for r in top]
+    return modes
+
+
+def _leading_indicators(request: SimulationRequest) -> list[str]:
+    base = [
+        "Early demand / engagement signal in the first 90 days",
+        "Cost trajectory vs. plan",
+        "Whether committed milestones are hit on time",
+    ]
+    if request.type == "Startup":
+        base.append("Design-partner or pilot conversion rate")
+    elif request.type == "Career":
+        base.append("Skill/role market demand trend")
+    return base
+
+
+def _decision_checkpoints(horizon_months: int) -> list[str]:
+    points = [m for m in (3, 6, 12, 24) if m <= horizon_months]
+    if horizon_months not in points:
+        points.append(horizon_months)
+    return [f"Month {m}: reassess and decide continue / adjust / exit" for m in points]
+
+
+def _twin_factors(twin) -> list[str]:
+    if not twin:
+        return []
+    factors = [
+        f"Subject type: {twin.subject_type}",
+        f"Risk profile: {twin.risk_profile.level}",
+        f"Execution style: {twin.execution_style.style}",
+    ]
+    factors += [p.label for p in twin.behavioral_patterns[:2]]
+    return factors
+
+
+def _branch_specs(request: SimulationRequest) -> list[tuple[str, str, str, DecisionOption | None, int, str]]:
+    """Return (key, title, thesis, option, branch_risk, seed_name) per branch.
+
+    2+ options -> one branch per option (+ a hybrid branch when exactly two).
+    Otherwise -> the Conservative/Balanced/Aggressive fallback, seeded exactly as
+    before so results are unchanged for the no-options path."""
+    options = request.options
+    if len(options) >= 2:
+        specs: list[tuple[str, str, str, DecisionOption | None, int, str]] = []
+        for opt in options:
+            thesis = opt.description or f"Pursue this option: {opt.label}."
+            specs.append(
+                (opt.id, opt.label, thesis, opt, _effective_risk(request, opt), f"{request.name} — Option: {opt.label}")
+            )
+        if len(options) == 2:
+            specs.append(
+                (
+                    "hybrid",
+                    "Hybrid / Phased",
+                    "Sequence the two options: validate the cheaper / more reversible one first, then commit to the winner.",
+                    None,
+                    int(request.risk),
+                    f"{request.name} — Hybrid path",
+                )
+            )
+        return specs
+
+    return [
+        (key, title, thesis, None, int(_clip(request.risk + delta, 0.0, 100.0)), request.name)
+        for key, title, delta, thesis in BRANCH_SPECS
+    ]
+
+
+def _record_provenance(
+    branches: list[TimelineBranch], recommended_id: str, simulation_id: str
+) -> dict:
+    """Create ClaimRecords for each branch's assumptions / milestones / risk, plus
+    one recommendation claim. Sets branch.claimIds and returns a summary dict.
+    Best-effort: any failure leaves claimIds empty rather than breaking /simulate."""
+    from backend.Provenance.provenance_schema import ClaimRecord
+    from backend.Provenance.provenance_service import create_claim
+
+    by_type: dict[str, int] = {}
+    total = 0
+
+    def _emit(branch: TimelineBranch, text: str, ctype: str, conf: float, evidence_ids, reason):
+        nonlocal total
+        rec = create_claim(
+            ClaimRecord(
+                claim_text=text,
+                claim_type=ctype,
+                created_by="simulation",
+                source_ids=list(branch.anchorNodeIds),
+                evidence_ids=list(evidence_ids),
+                graph_node_ids=list(branch.anchorNodeIds),
+                confidence=round(float(conf), 3),
+                uncertainty_reason=reason,
+                timeline_id=branch.id,
+                simulation_id=simulation_id,
+            )
+        )
+        branch.claimIds.append(rec.claim_id)
+        by_type[ctype] = by_type.get(ctype, 0) + 1
+        total += 1
+
+    for branch in branches:
+        for a in branch.assumptions:
+            _emit(branch, a.statement, "inference", a.confidence, a.evidenceIds, a.riskIfWrong)
+        if branch.milestones:
+            _emit(
+                branch,
+                "Projected trajectory: " + "; ".join(m.event for m in branch.milestones[:6]),
+                "prediction",
+                branch.probabilityScore,
+                branch.evidenceUsed[:5],
+                "Heuristic projection, not an observed outcome.",
+            )
+        if branch.riskFactors or branch.failureModes:
+            _emit(
+                branch,
+                "Risk factors: " + "; ".join(branch.riskFactors)
+                + (". Failure modes: " + "; ".join(branch.failureModes) if branch.failureModes else ""),
+                "inference",
+                branch.expectedRegret,
+                [],
+                "Heuristic risk estimate from the forecast engine.",
+            )
+        if branch.id == recommended_id:
+            _emit(
+                branch,
+                f"Recommended path: {branch.title} "
+                f"(probability {branch.probabilityScore * 100:.0f}%, regret {branch.expectedRegret * 100:.0f}%).",
+                "recommendation",
+                branch.probabilityScore,
+                branch.evidenceUsed[:5],
+                "Best probability-vs-regret tradeoff among the branches.",
+            )
+
+    return {"simulationId": simulation_id, "totalClaims": total, "claimsByType": by_type}
+
+
+def _agent_mode() -> str:
+    """Read AGENT_MODE at call time so it can be overridden per environment/test."""
+    from backend import config
+
+    return config.AGENT_MODE
+
+
+def generate_simulation(
+    request: SimulationRequest, evidence_override: list[EvidenceItem] | None = None
+) -> SimulationResponse:
     horizon_months = HORIZON_MONTHS[request.horizon]
+    simulation_id = str(uuid.uuid4())
 
-    # Retrieve curated LOCAL DEMO evidence relevant to the decision once, then
-    # attach it to every branch and use it to lift source/temporal confidence.
+    # Retrieve evidence once (via the active provider). The exact list is
+    # snapshotted into the response so it can't be silently changed later.
+    # Replay can pass evidence_override to reuse a stored snapshot verbatim.
     evidence_query = f"{request.name}. {request.goal}"
-    evidence = search_evidence(query=evidence_query, k=5)
+    if evidence_override is not None:
+        evidence = evidence_override
+        evidence_provider = "replay:original_evidence"
+    else:
+        evidence = search_evidence(query=evidence_query, k=5)
+        evidence_provider = active_provider_name()
+    option_labels = [o.label for o in request.options]
 
+    # Memory-graph precedents (best-effort; never blocks the simulation).
+    try:
+        from .query_layer import find_similar_past_decisions_clean
+
+        precedents = find_similar_past_decisions_clean(evidence_query, k=5).get("items", [])
+    except Exception:
+        precedents = []
+    precedent_strength = _clip(len(precedents) / 5.0, 0.0, 1.0)
+
+    # Digital Twin Constructor — best-effort; never blocks the simulation.
+    twin = None
+    try:
+        from backend.Digital_Twin.digital_twin_schema import DigitalTwinBuildRequest
+        from backend.Digital_Twin.digital_twin_service import build_digital_twin
+
+        twin = build_digital_twin(
+            DigitalTwinBuildRequest(
+                decisionQuestion=request.name,
+                decisionType=request.type,
+                goal=request.goal,
+                constraints=request.constraints,
+                geography=request.geography,
+                options=option_labels,
+            )
+        )
+    except Exception:
+        twin = None
+    twin_completeness = twin.confidenceBreakdown.overallConfidence if twin else 0.0
+    twin_factors = _twin_factors(twin)
+
+    # Build one branch per spec (option-aware; see _branch_specs).
     branches: list[TimelineBranch] = []
     forecasts: dict[str, DecisionForecast] = {}
     dists: dict[str, dict[str, float]] = {}
-    for key, title, risk_delta, thesis in BRANCH_SPECS:
-        branch_risk = int(_clip(request.risk + risk_delta, 0.0, 100.0))
+    for key, title, thesis, option, branch_risk, seed_name in _branch_specs(request):
         branch_req = DecisionForecastRequest(
-            name=request.name,
+            name=seed_name,  # option label folded into the seed -> distinct forecast per option
             type=request.type,
             horizon=request.horizon,
             risk=branch_risk,
@@ -472,6 +787,11 @@ def generate_simulation(request: SimulationRequest) -> SimulationResponse:
         dists[key] = dist
         citations = _branch_citations(forecast)
 
+        assumptions = _build_assumptions(key, option, request, evidence, twin, dist, horizon_months)
+        assumption_conf = (
+            sum(a.confidence for a in assumptions) / len(assumptions) if assumptions else 0.5
+        )
+
         branches.append(
             TimelineBranch(
                 id=f"branch_{key}",
@@ -480,12 +800,23 @@ def generate_simulation(request: SimulationRequest) -> SimulationResponse:
                 probabilityScore=round(_branch_probability(dist), 3),
                 expectedRegret=round(_clip(forecast.regretAnalysis.regretScore / 100.0, 0.0, 1.0), 3),
                 status="active",
-                milestones=_branch_milestones(title, forecast, citations),
-                confidenceBreakdown=_branch_confidence(forecast, horizon_months, dist, evidence),
+                milestones=_branch_milestones(title, forecast, citations, horizon_months),
+                confidenceBreakdown=_branch_confidence(
+                    forecast, horizon_months, dist, evidence, assumption_conf, twin_completeness, precedent_strength
+                ),
                 anchorNodeIds=[g.chunk_id for g in forecast.groundedOn],
                 agentDisagreements=[],  # filled from the agent council below
                 groundedOn=forecast.groundedOn,
                 externalEvidence=evidence,
+                optionId=option.id if option else None,
+                assumptions=assumptions,
+                evidenceUsed=[e.id for e in evidence],
+                digitalTwinFactors=twin_factors,
+                riskFactors=_risk_factors(forecast, option),
+                upsideFactors=_upside_factors(dist, option),
+                failureModes=_failure_modes(forecast, dist),
+                leadingIndicators=_leading_indicators(request),
+                decisionCheckpoints=_decision_checkpoints(horizon_months),
             )
         )
 
@@ -498,24 +829,44 @@ def generate_simulation(request: SimulationRequest) -> SimulationResponse:
     affected = sorted({nid for b in branches for nid in b.anchorNodeIds})
 
     # --- Multi-agent council -------------------------------------------------
-    # Memory-graph precedents (best-effort; never blocks the simulation).
-    try:
-        from .query_layer import find_similar_past_decisions_clean
-
-        precedents = find_similar_past_decisions_clean(evidence_query, k=5).get("items", [])
-    except Exception:
-        precedents = []
-
-    balanced = forecasts.get("balanced") or next(iter(forecasts.values()))
-    balanced_dist = dists.get("balanced") or {}
+    representative = forecasts.get("balanced") or next(iter(forecasts.values()))
+    representative_dist = dists.get("balanced") or next(iter(dists.values()))
     forecast_context = {
-        "failure_share": balanced_dist.get("Failure", 0.0),
-        "upside_share": balanced_dist.get("Strong", 0.0) + balanced_dist.get("Breakout", 0.0),
+        "failure_share": representative_dist.get("Failure", 0.0),
+        "upside_share": representative_dist.get("Strong", 0.0) + representative_dist.get("Breakout", 0.0),
         "top_risks": [
             r.label
-            for r in sorted(balanced.riskHeatmap, key=lambda x: x.level, reverse=True)[:3]
+            for r in sorted(representative.riskHeatmap, key=lambda x: x.level, reverse=True)[:3]
         ],
     }
+
+    # Clarifying Intake analysis — detect missing decision context. Never blocks
+    # (decisionQuestion is always present here); low completeness -> confidence penalty.
+    intake = None
+    try:
+        from backend.Intake.intake_schema import IntakeAnalyzeRequest
+        from backend.Intake.intake_service import analyze_intake
+
+        intake = analyze_intake(
+            IntakeAnalyzeRequest(
+                decisionQuestion=request.name,
+                decisionType=request.type,
+                horizon=request.horizon,
+                risk=request.risk,
+                goal=request.goal,
+                constraints=request.constraints,
+                geography=request.geography,
+                options=option_labels,
+                digitalTwinProfile=(twin.model_dump(mode="json") if twin else None),
+                evidenceCount=len(evidence),
+                precedentCount=len(precedents),
+            )
+        )
+    except Exception:
+        intake = None
+
+    intake_missing = intake.missingFields if intake else None
+    intake_low = bool(intake and intake.completenessScore < 0.6)
 
     council = run_agent_council(
         request=request,
@@ -524,14 +875,41 @@ def generate_simulation(request: SimulationRequest) -> SimulationResponse:
         branches=branches,
         recommended_branch_id=recommended.id,
         forecast_context=forecast_context,
+        twin=twin,
+        intake_missing_fields=intake_missing,
+        intake_low_completeness=intake_low,
+        agent_mode=_agent_mode(),
     )
+
+    # Safety: high-stakes decisions (Financial/Life) get conservative confidence
+    # and a professional-advice warning; all decisions carry a disclaimer.
+    from backend.Safety.policy import HIGH_STAKES_CONFIDENCE_FACTOR, build_safety_label
+
+    safety = build_safety_label(request.type)
+    stakes_factor = HIGH_STAKES_CONFIDENCE_FACTOR if safety.high_stakes else 1.0
 
     # Attach council output per-branch and derive modelConsensus from agent
     # agreement (same council applies to every branch of this decision).
+    # Also apply the intake confidence penalty (missing context scales confidence
+    # down, up to 50% at zero completeness) and the high-stakes factor.
+    penalty_factor = (1.0 - (intake.confidencePenalty * 0.5 if intake else 0.0)) * stakes_factor
     disagreements = council_to_disagreements(council)
     for branch in branches:
         branch.agentDisagreements = disagreements
-        branch.confidenceBreakdown.modelConsensus = round(council.consensusScore, 3)
+        cb = branch.confidenceBreakdown
+        cb.modelConsensus = council.consensusScore
+        cb.evidenceStrength = round(cb.evidenceStrength * penalty_factor, 3)
+        cb.sourceReliability = round(cb.sourceReliability * penalty_factor, 3)
+        cb.modelConsensus = round(cb.modelConsensus * penalty_factor, 3)
+        cb.temporalRelevance = round(cb.temporalRelevance * penalty_factor, 3)
+        cb.causalCoherence = round(cb.causalCoherence * penalty_factor, 3)
+
+    # Provenance: record traceable claims for every branch. Best-effort.
+    provenance_summary = None
+    try:
+        provenance_summary = _record_provenance(branches, recommended.id, simulation_id)
+    except Exception:
+        provenance_summary = None
 
     return SimulationResponse(
         metadata=SimulationMetadata(query=request.name, horizonMonths=horizon_months),
@@ -539,5 +917,12 @@ def generate_simulation(request: SimulationRequest) -> SimulationResponse:
         recommendedTimelineId=recommended.id,
         affectedNodeIds=affected,
         externalEvidenceUsed=evidence,
+        evidenceProvider=evidence_provider,
         agentCouncil=council,
+        digitalTwinProfileId=twin.profile_id if twin else None,
+        digitalTwinSummary=twin.decision_history_summary if twin else None,
+        intakeAnalysis=intake,
+        simulationId=simulation_id,
+        provenanceSummary=provenance_summary,
+        safety=safety,
     )
