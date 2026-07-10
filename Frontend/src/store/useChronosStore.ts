@@ -22,6 +22,9 @@ export type BackendStatus = 'unknown' | 'connected' | 'disconnected';
 
 export interface ChronosStoreState {
   currentStep: number;
+  activeSection: string;
+  isCurtainVisible: boolean;
+  isCurtainAnimatingOut: boolean;
   decisionQuestion: string;
   decisionType: DecisionType;
   horizon: Horizon;
@@ -50,6 +53,9 @@ export interface ChronosStoreState {
 
 export interface ChronosStoreActions {
   setStep: (step: number) => void;
+  setActiveSection: (section: string) => void;
+  triggerAppLaunch: () => void;
+  setCurtainState: (visible: boolean, animatingOut: boolean) => void;
   setDecisionQuestion: (question: string) => void;
   setDecisionType: (type: DecisionType) => void;
   setHorizon: (horizon: Horizon) => void;
@@ -119,6 +125,9 @@ function normalizeTimeline(timeline: BackendTimelineBranch): Timeline {
 
 export const useChronosStore = create<ChronosStore>((set, get) => ({
   currentStep: 0,
+  activeSection: 'chronos-top',
+  isCurtainVisible: true,
+  isCurtainAnimatingOut: false,
   decisionQuestion: '',
   decisionType: 'Startup',
   horizon: '3 years',
@@ -145,6 +154,20 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
   isLoading: false,
 
   setStep: (step) => set({ currentStep: step }),
+  setActiveSection: (section) => set({ activeSection: section }),
+  setCurtainState: (visible, animatingOut) =>
+    set({ isCurtainVisible: visible, isCurtainAnimatingOut: animatingOut }),
+  triggerAppLaunch: () => {
+    set({ isCurtainVisible: true, isCurtainAnimatingOut: false });
+    setTimeout(() => {
+      set({ currentStep: 1 });
+      document.getElementById('main-scroll-area')?.scrollTo(0, 0);
+      set({ isCurtainAnimatingOut: true });
+      setTimeout(() => {
+        set({ isCurtainVisible: false });
+      }, 1000);
+    }, 800);
+  },
   setDecisionQuestion: (question) => set({ decisionQuestion: question }),
   setDecisionType: (decisionType) => set({ decisionType }),
   setHorizon: (horizon) => set({ horizon }),

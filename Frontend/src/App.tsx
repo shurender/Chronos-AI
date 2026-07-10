@@ -1,5 +1,5 @@
 import { ChevronDown, Loader2, MessageSquare, FileText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { FutureSelfChat } from './components/chat/FutureSelfChat';
 import { MemoryGraphView } from './components/graph/MemoryGraphView';
 import { StepProgressBar } from './components/layout/StepProgressBar';
@@ -25,6 +25,7 @@ const GithubIcon = ({ className }: { className?: string }) => (
     <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
   </svg>
 );
+
 // ── Step 1: Connect Data ──────────────────────────────────────────────────────
 function ConnectDataView() {
   const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
@@ -33,14 +34,14 @@ function ConnectDataView() {
   const backendStatus = useChronosStore((state) => state.backendStatus);
   const isLoading = useChronosStore((state) => state.isLoading);
   const sources = [
-    { icon: GithubIcon,       label: 'GitHub',   sub: 'Commits & issues'  },
+    { icon: GithubIcon,   label: 'GitHub',   sub: 'Commits & issues'  },
     { icon: SlackIcon,    label: 'Slack',    sub: 'Threads & channels' },
     { icon: NotionIcon,   label: 'Notion',   sub: 'Docs & pages'       },
     { icon: FileText,     label: 'PDFs',     sub: 'Resumes & reports'  },
   ] as const;
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white">
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-xl">
         <h1 className="text-3xl font-serif tracking-tight text-gray-900">
           Connect Your Data Sources
@@ -53,7 +54,6 @@ function ConnectDataView() {
           Backend {backendStatus === 'connected' ? 'connected' : backendStatus === 'disconnected' ? 'disconnected' : 'checking...'}
         </p>
 
-        {/* Group wrapper for hover dimming effect */}
         <div className="mt-10 grid grid-cols-2 gap-4 group">
           {sources.map(({ icon: Icon, label, sub }) => (
             <div
@@ -95,7 +95,7 @@ function DefineDecisionView() {
   const { decisionQuestion, setDecisionQuestion, decisionType, setDecisionType, horizon, setHorizon, risk, setRisk, goal, setGoal, constraints, setConstraints, geography, setGeography, optionA, setOptionA, optionB, setOptionB, optionC, setOptionC, runSimulation, isLoading, errorMessage } = useChronosStore();
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white">
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-8 shadow-xl">
         <h1 className="text-3xl font-serif tracking-tight text-gray-900">
           Define Your Decision
@@ -278,7 +278,7 @@ function SimulateFuturesView() {
   if (!simulationData) return <div className="flex flex-1 items-center justify-center text-sm text-gray-500 bg-gray-50">No data available. Run simulation from Step 2.</div>;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-white">
+    <div className="flex min-h-0 flex-1 flex-col bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-8 py-4">
         <div className="w-1/3">
           <h2 className="text-xl font-serif font-bold text-gray-900">Simulated Futures</h2>
@@ -319,7 +319,7 @@ function SimulateFuturesView() {
 
 // ── Step 4: Explore ───────────────────────────────────────────────────────────
 function ExploreChatView() {
-  return <div className="min-h-0 flex-1 bg-white"><FutureSelfChat /></div>;
+  return <div className="min-h-0 flex-1 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700"><FutureSelfChat /></div>;
 }
 
 // ── Loading Overlay ───────────────────────────────────────────────────────────
@@ -337,60 +337,197 @@ function LoadingOverlay() {
   );
 }
 
+
+// ── Global Black Transition Curtain ─────────────────────────────────────────
+// Driven entirely by React state + CSS transitions (not @keyframes fired at
+// mount time), which is what makes the fade reliable across browsers instead
+// of occasionally just flashing black with no visible animation.
+//
+// - fadeInOnMount=false (initial page load): the curtain is already opaque
+//   on the very first paint (so there's no flash of the landing page),
+//   holds while the shimmer text reads, then fades out smoothly.
+// - fadeInOnMount=true (Launch Program transition): the curtain fades IN
+//   over visible content, the step swap happens once it's fully opaque,
+//   then it fades back out to reveal the wizard.
+function Curtain({ animatingOut, fadeInOnMount = false }: { animatingOut: boolean; fadeInOnMount?: boolean }) {
+  const [entered, setEntered] = useState(!fadeInOnMount);
+  const [textVisible, setTextVisible] = useState(!fadeInOnMount);
+
+  useEffect(() => {
+    if (!fadeInOnMount) return;
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, [fadeInOnMount]);
+
+  useEffect(() => {
+    const delay = fadeInOnMount ? 500 : 150;
+    const t = setTimeout(() => setTextVisible(true), delay);
+    return () => clearTimeout(t);
+  }, [fadeInOnMount]);
+
+  const curtainShown = entered && !animatingOut;
+  const textShown = textVisible && !animatingOut;
+
+  return (
+    <div
+      className={`fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center
+        transition-opacity duration-[800ms] ease-[cubic-bezier(0.76,0,0.24,1)]
+        ${curtainShown ? 'opacity-100' : 'opacity-0'} ${animatingOut ? 'pointer-events-none' : ''}`}
+    >
+      <h1
+        className={`text-5xl font-serif tracking-tighter transition-all duration-700 ease-out
+          ${textShown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
+      >
+        <span className="shimmer-text">Chronos Engine</span>
+      </h1>
+    </div>
+  );
+}
+
 // ── ROOT APP SHELL ────────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { label: 'Impact', step: 0 },
-  { label: 'Launch Program', step: 1 },
-] as const;
 
 export default function App() {
   const currentStep = useChronosStore((state) => state.currentStep);
   const isLoading = useChronosStore((state) => state.isLoading);
   const setStep = useChronosStore((state) => state.setStep);
   const checkBackendStatus = useChronosStore((state) => state.checkBackendStatus);
+  const activeSection = useChronosStore((state) => state.activeSection);
+  const isCurtainVisible = useChronosStore((state) => state.isCurtainVisible);
+  const isCurtainAnimatingOut = useChronosStore((state) => state.isCurtainAnimatingOut);
+  const triggerAppLaunch = useChronosStore((state) => state.triggerAppLaunch);
+  const setCurtainState = useChronosStore((state) => state.setCurtainState);
 
   useEffect(() => {
     void checkBackendStatus();
   }, [checkBackendStatus]);
 
+  // Initial Full-Screen Intro Loading Curtain: hold for the shimmer text to
+  // read, then fade out smoothly (800ms transition, see Curtain component).
+  useEffect(() => {
+    const t1 = setTimeout(() => setCurtainState(true, true), 1900);
+    const t2 = setTimeout(() => setCurtainState(false, false), 2700);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [setCurtainState]);
+
+  // Launch Program → Wizard transition curtain (separate from the initial
+  // load curtain above, but reuses the same Curtain component/behavior).
+  const [isLaunchTransitioning, setIsLaunchTransitioning] = useState(false);
+  const [isLaunchExiting, setIsLaunchExiting] = useState(false);
+
+  const handleLaunch = () => {
+    if (isLaunchTransitioning) return;
+    setIsLaunchTransitioning(true);
+    setIsLaunchExiting(false);
+    // Wait for the curtain to fully fade to black before swapping content
+    // underneath, so the step change is never visible mid-transition.
+    const t1 = setTimeout(() => {
+      triggerAppLaunch();
+      setIsLaunchExiting(true);
+    }, 900);
+    // Unmount once the fade-out transition has finished.
+    const t2 = setTimeout(() => {
+      setIsLaunchTransitioning(false);
+      setIsLaunchExiting(false);
+    }, 900 + 800);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  };
+
+  // Fix: there are two scrollable containers here — the outer #main-scroll-area
+  // AND a nested #wizard-scroll-area that holds the actual step content — and
+  // both can retain whatever scroll position the landing page was left at.
+  // Reset both, synchronously before paint (useLayoutEffect) and with
+  // scroll-behavior forced to 'auto' so it's an instant jump, not a visible
+  // slide down-then-up.
+  useLayoutEffect(() => {
+    if (currentStep > 0) {
+      ['main-scroll-area', 'wizard-scroll-area'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const prevBehavior = el.style.scrollBehavior;
+        el.style.scrollBehavior = 'auto';
+        el.scrollTop = 0;
+        el.style.scrollBehavior = prevBehavior;
+      });
+    }
+  }, [currentStep]);
+
+  // Utility to handle navigation scrolling when on Step 0
+  const handleScrollNav = (id: string) => {
+    setStep(0);
+    setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 font-sans antialiased overflow-hidden">
+    <div className="flex min-h-screen bg-white text-gray-900 font-sans antialiased overflow-hidden relative">
       
+      {/* ── Global Black Transition Curtain ── */}
+      {isCurtainVisible && <Curtain animatingOut={isCurtainAnimatingOut} />}
+      {isLaunchTransitioning && <Curtain animatingOut={isLaunchExiting} fadeInOnMount />}
+
       {/* ── Youssri-style Narrow Left Sidebar ── */}
-      {/* Fixed w-16 container with flex layout ensuring children don't overflow the width */}
       <aside className="fixed inset-y-0 left-0 w-16 border-r border-gray-200 bg-white z-50 flex flex-col items-center py-10">
-        
-        {/* Title container with explicit height to hold rotated text */}
         <div className="flex-none h-24 mb-16 relative w-full flex justify-center items-center">
           <span className="-rotate-90 whitespace-nowrap text-[13px] font-serif font-bold tracking-widest uppercase text-gray-900 absolute">
-            Chronos
+            CE
           </span>
         </div>
 
-        {/* Navigation container */}
         <nav className="flex-1 flex flex-col items-center gap-16 justify-center w-full">
-          {NAV_ITEMS.map((item) => (
-            <div key={item.label} className="relative w-full h-32 flex justify-center items-center">
-              <button
-                type="button"
-                onClick={() => setStep(item.step)}
-                className={`-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute
-                  transition-colors duration-300
-                  ${currentStep === item.step ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'}`}
-              >
-                {item.label}
-              </button>
-            </div>
-          ))}
+
+          {/* Chronos Link */}
+          <div className="relative w-full h-32 flex justify-center items-center">
+            <button
+              type="button"
+              onClick={() => handleScrollNav('chronos-top')}
+              className={`-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute transition-colors duration-300
+                ${currentStep === 0 && activeSection === 'chronos-top' ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'}`}
+            >
+              Chronos
+            </button>
+          </div>
+
+          {/* Impact / FAQ Dynamic Link */}
+          <div className="relative w-full h-32 flex justify-center items-center">
+            <button
+              type="button"
+              onClick={() => handleScrollNav('impact-section')}
+              className="-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute flex items-center justify-center w-24 h-4"
+            >
+              <span className={`absolute transition-opacity duration-500 ${currentStep === 0 && (activeSection === 'impact-section' || activeSection === 'faq-section') ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'} ${activeSection === 'faq-section' ? 'opacity-0' : 'opacity-100'}`}>
+                Impact
+              </span>
+              <span className={`absolute transition-opacity duration-500 ${currentStep === 0 && (activeSection === 'impact-section' || activeSection === 'faq-section') ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'} ${activeSection === 'faq-section' ? 'opacity-100' : 'opacity-0'}`}>
+                FAQ
+              </span>
+            </button>
+          </div>
+
+          {/* Launch Program Link */}
+          <div className="relative w-full h-32 flex justify-center items-center">
+            <button
+              type="button"
+              onClick={handleLaunch}
+              className={`-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute transition-colors duration-300
+                ${currentStep > 0 ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'}`}
+            >
+              Launch Program
+            </button>
+          </div>
+
         </nav>
       </aside>
 
       {/* ── Main Content Area (Offset by sidebar width: pl-16) ── */}
-      <main className="flex-1 flex flex-col pl-16 relative min-h-0 h-screen overflow-hidden bg-gray-50">
-        {currentStep === 0 && <LandingPage />}
+      <main id="main-scroll-area" className="flex-1 flex flex-col pl-16 relative min-h-0 h-screen overflow-auto bg-gray-50">
 
+        {/* Step 0: The Unified Scrolling Landing Page */}
+        {currentStep === 0 && <LandingPage onLaunch={handleLaunch} />}
+
+        {/* Steps 1-4: The Application Wizard */}
         {currentStep > 0 && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full bg-gray-50">
             <header className="shrink-0 border-b border-gray-200 bg-white px-8 py-5">
               <h1 className="text-2xl font-serif font-bold text-gray-900 leading-none">
                 Chronos Engine
@@ -402,7 +539,7 @@ export default function App() {
             
             <StepProgressBar />
             
-            <div className="flex-1 overflow-auto flex flex-col relative bg-white">
+            <div id="wizard-scroll-area" className="flex-1 overflow-auto flex flex-col relative bg-white">
               {currentStep === 1 && <ConnectDataView />}
               {currentStep === 2 && <DefineDecisionView />}
               {currentStep === 3 && <SimulateFuturesView />}
