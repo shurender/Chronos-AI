@@ -103,6 +103,7 @@ def _client():
 
     config.LLM_PROVIDER = "mock"
     config.EMBEDDING_PROVIDER = "mock"
+    config.EVIDENCE_PROVIDER = "demo"
     config.AGENT_MODE = "deterministic"
     from fastapi.testclient import TestClient
 

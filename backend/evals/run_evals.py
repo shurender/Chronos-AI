@@ -27,7 +27,9 @@ def _configure_deterministic() -> None:
 
     config.LLM_PROVIDER = "mock"
     config.EMBEDDING_PROVIDER = "mock"
+    config.EVIDENCE_PROVIDER = "demo"
     config.AGENT_MODE = "deterministic"
+    config.DEMO_MODE = True
 
 
 def _load_cases():

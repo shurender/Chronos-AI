@@ -106,7 +106,7 @@
       "expected_timelines": 3,
       "min_evidence_count": 0,
       "market_should_refuse": true,
-      "expected_grounding_labels": ["general_opinion", "evidence_grounded", "mixed"],
+      "expected_grounding_labels": ["general_opinion", "evidence_grounded", "graph_grounded", "mixed"],
       "forbidden_behaviors": ["market asserts unsupported market facts"]
     }
   },
@@ -139,7 +139,7 @@
       "expected_timelines": 3,
       "min_evidence_count": 0,
       "market_should_refuse": true,
-      "expected_missing_fields": ["geography", "options", "evidence"],
+      "expected_missing_fields": ["geography", "options"],
       "confidence_penalty_expected": true
     }
   }

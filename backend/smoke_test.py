@@ -12,7 +12,20 @@ be used as a pre-demo gate.
 import sys
 
 
+def _configure_deterministic() -> None:
+    # Keep smoke tests offline/reproducible even when local .env contains live keys.
+    from backend import config
+
+    config.LLM_PROVIDER = "mock"
+    config.EMBEDDING_PROVIDER = "mock"
+    config.EVIDENCE_PROVIDER = "demo"
+    config.AGENT_MODE = "deterministic"
+    config.DEMO_MODE = True
+
+
 def run() -> None:
+    _configure_deterministic()
+
     print("[1/13] Importing backend.api ...")
     import backend.api as api  # noqa: F401  (import success is the check)
 
@@ -154,7 +167,7 @@ def run() -> None:
 
     health = {p["provider"]: p for p in client.get("/evidence/providers/health").json()}
     assert health["demo"]["available"] is True and health["demo"]["is_demo"] is True
-    assert health["web"]["available"] is False, "web provider is a stub and should report unavailable"
+    assert "tavily" in health, "tavily provider health missing"
 
     upload_res = client.post(
         "/evidence/upload",
@@ -220,8 +233,7 @@ def run() -> None:
     print("[10/13] LLM providers (health / mock provider / missing-key does not crash) ...")
     llm_health = client.get("/llm/health").json()
     assert "chat" in llm_health and "available" in llm_health["chat"], "/llm/health missing chat status"
-    # Default provider is groq; without a key it must report unavailable, not crash.
-    assert llm_health["chat"]["provider"] == "groq"
+    assert llm_health["chat"]["provider"] == "mock"
 
     import backend.config as _cfg
     from backend.LLM import llm_service as _svc

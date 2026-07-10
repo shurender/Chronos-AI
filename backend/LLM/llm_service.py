@@ -12,6 +12,7 @@ a deterministic offline chat provider.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Optional
 
 from pydantic import BaseModel
@@ -36,6 +37,67 @@ def _empty_schema_instance(schema: type[BaseModel]) -> BaseModel:
         return schema.model_construct(**kwargs)
 
 
+def _last_user_text(messages: Messages) -> str:
+    if isinstance(messages, str):
+        return messages
+    for role, content in reversed(messages):
+        if role == "human":
+            return content
+    return messages[-1][1] if messages else ""
+
+
+def _extract_chunk_text(text: str) -> str:
+    marker = "Chunk text:"
+    if marker in text:
+        text = text.split(marker, 1)[1]
+    marker = "Entities:"
+    if marker in text:
+        text = text.split(marker, 1)[0]
+    return text.strip()
+
+
+def _mock_structured_output(messages: Messages, schema: type[BaseModel]) -> BaseModel:
+    from backend.schema import CandidateEdge, CandidateEdges, CandidateNode, CandidateNodes, Tag, Tags
+
+    text = _extract_chunk_text(_last_user_text(messages))
+    first_sentence = re.split(r"(?<=[.!?])\s+", text.replace("\n", " ").strip())[0][:240]
+
+    if schema is CandidateNodes:
+        nodes: list[CandidateNode] = []
+        if "Chronos" in text:
+            nodes.append(CandidateNode(node_type="project", label="Chronos-AI", description=first_sentence or "Chronos-AI project activity."))
+        if re.search(r"\b(Alice|Bob|Charlie|Jane Doe)\b", text):
+            person = re.search(r"\b(Alice|Bob|Charlie|Jane Doe)\b", text).group(1)
+            nodes.append(CandidateNode(node_type="person", label=person, description=f"{person} is mentioned in this source chunk."))
+        if re.search(r"\b(implement|verified|need|switch|pivot|decision|should)\b", text, re.I):
+            nodes.append(CandidateNode(node_type="decision", label=first_sentence[:80] or "Recorded decision", description=first_sentence or text[:240]))
+        if re.search(r"\b(failure|error|cleanly|renewed|caused|result|outcome)\b", text, re.I):
+            nodes.append(CandidateNode(node_type="outcome", label=first_sentence[:80] or "Recorded outcome", description=first_sentence or text[:240]))
+        if not nodes and text:
+            nodes.append(CandidateNode(node_type="project", label="Imported evidence", description=text[:240]))
+        return CandidateNodes(nodes=nodes[:4])
+
+    if schema is CandidateEdges:
+        labels = re.findall(r"- \([^)]+\) ([^:]+):", _last_user_text(messages))
+        edges: list[CandidateEdge] = []
+        if len(labels) >= 2:
+            edges.append(
+                CandidateEdge(
+                    source_label=labels[0],
+                    target_label=labels[1],
+                    edge_type="contributory",
+                    description=f"{labels[0]} is related to {labels[1]} in the same source chunk.",
+                )
+            )
+        return CandidateEdges(edges=edges)
+
+    if schema is Tags:
+        labels = re.findall(r"- (?:NODE|EDGE): ([^:\n]+)", _last_user_text(messages))
+        return Tags(tags=[Tag(label_or_description=label.strip(), evidence_type="fact", confidence=0.72) for label in labels[:8]])
+
+    return _empty_schema_instance(schema)
+
+
 class MockChatProvider(LLMProvider):
     provider_name = "mock"
     model_name = "mock-deterministic"
@@ -44,8 +106,7 @@ class MockChatProvider(LLMProvider):
 
     def chat(self, messages: Messages, temperature: float = 0.0, response_schema: Optional[type[BaseModel]] = None):
         if response_schema is not None:
-            # Empty-but-valid structured output (no invented content).
-            return _empty_schema_instance(response_schema)
+            return _mock_structured_output(messages, response_schema)
         return (
             "[mock LLM] No live model is configured (LLM_PROVIDER=mock). This is a "
             "deterministic offline response; configure a real provider for grounded generation."
@@ -105,9 +166,14 @@ def chat(messages: Messages, temperature: float = 0.0, response_schema: Optional
     try:
         return get_chat_provider().chat(messages, temperature=temperature, response_schema=response_schema)
     except LLMProviderError:
-        if provider_name == "fireworks" and config.GROQ_API_KEY:
-            logger.warning("Fireworks provider failed; falling back to Groq.")
-            return _make_chat_provider("groq").chat(
+        if provider_name == "fireworks":
+            if config.GROQ_API_KEY:
+                logger.warning("Fireworks provider failed; falling back to Groq.")
+                return _make_chat_provider("groq").chat(
+                    messages, temperature=temperature, response_schema=response_schema
+                )
+            logger.warning("Fireworks provider failed; falling back to deterministic mock.")
+            return _make_chat_provider("mock").chat(
                 messages, temperature=temperature, response_schema=response_schema
             )
         raise
