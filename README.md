@@ -70,7 +70,7 @@ uvicorn backend.api:app --reload --port 8000
 ```
 The backend is now running at http://localhost:8000. (Interactive API docs available at /docs)
 
-###🔵 Terminal 2: Start the Frontend (Vite)
+### 🔵 Terminal 2: Start the Frontend (Vite)
 
 ### 1. Navigate to the frontend directory:
  ```bash
