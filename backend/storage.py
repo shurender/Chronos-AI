@@ -7,23 +7,17 @@ import os
 import pickle
 
 import chromadb
-from dotenv import load_dotenv
-from pathlib import Path
 
+from . import config
 from .schema import GraphEdge, GraphNode
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
-BASE_DIR = Path(__file__).resolve().parent
 
-load_dotenv()
-
-# Optional DATA_DIR relocates the default data stores (used by Docker volumes).
-# Explicit GRAPH_PATH / CHROMA_DB_PATH (or CHROMA_PATH alias) still win.
-_DATA_BASE = Path(os.getenv("DATA_DIR")) if os.getenv("DATA_DIR") else BASE_DIR
-
-GRAPH_PATH = os.getenv("GRAPH_PATH", str(_DATA_BASE / "graph.gpickle"))
-CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH") or os.getenv("CHROMA_PATH") or str(_DATA_BASE / "chroma_db")
+# config loads the repo .env consistently, so graph, Chroma, and health checks
+# all resolve paths in the same way.
+GRAPH_PATH = config.GRAPH_PATH
+CHROMA_DB_PATH = config.CHROMA_DB_PATH
 
 import networkx as nx
 

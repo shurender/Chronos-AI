@@ -16,6 +16,7 @@ __pycache__/
 .env
 .venv/
 Frontend/node_modules/
+Frontend/dist/
 .claude/
 backend/Ingestion/uploads/
 backend/Ingestion/runs.json

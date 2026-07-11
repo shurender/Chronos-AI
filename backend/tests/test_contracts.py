@@ -131,6 +131,19 @@ def test_health_contract(client=None):
     _require(lh["chat"], {"provider", "model", "available", "supports_structured_output", "supports_embeddings", "detail"}, "/llm/health chat")
 
 
+def test_cors_origins_normalized():
+    import backend.config as config
+
+    assert all(not origin.endswith("/") for origin in config.CORS_ORIGINS), config.CORS_ORIGINS
+
+
+def test_storage_paths_match_config():
+    from backend import config, storage
+
+    assert storage.CHROMA_DB_PATH == config.CHROMA_DB_PATH
+    assert storage.GRAPH_PATH == config.GRAPH_PATH
+
+
 def test_graph_contract(client=None):
     c = client or _client()
     g = c.get("/graph").json()

@@ -53,10 +53,20 @@ export async function apiFetch<T>(
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch (error) {
+    const reason = error instanceof Error && error.message ? ` (${error.message})` : '';
+    throw new ChronosApiError(
+      0,
+      `Could not reach the Chronos API at ${API_BASE_URL}. Start the backend and verify VITE_API_BASE_URL and CORS_ORIGINS.${reason}`,
+      error,
+    );
+  }
   const body = await parseResponseBody(response);
 
   if (!response.ok) {

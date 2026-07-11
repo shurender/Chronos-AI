@@ -16,6 +16,8 @@ sentence-transformers==3.3.1
 # Vector store
 chromadb==0.5.23
 langchain-chroma==0.1.4
+# Chroma 0.5.x uses PostHog's legacy capture API; newer major versions break it.
+posthog<6
 
 # Graph structure + query
 networkx==3.4.2

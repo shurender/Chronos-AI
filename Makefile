@@ -1,9 +1,11 @@
 # Chronos developer tasks. Backend runs from the repo root; frontend from ./Frontend.
 .PHONY: backend frontend test-backend test-frontend smoke evals docker-up install
 
+PYTHON ?= python3
+
 # Run the FastAPI backend (hot reload) on :8000
 backend:
-	uvicorn backend.api:app --reload --port 8000
+	$(PYTHON) -m uvicorn backend.api:app --reload --port 8000
 
 # Run the Vite frontend dev server on :5173
 frontend:
@@ -11,7 +13,7 @@ frontend:
 
 # Backend test = in-process smoke test
 test-backend:
-	python -m backend.smoke_test
+	$(PYTHON) -m backend.smoke_test
 
 # Frontend test = production build / type-check
 test-frontend:
@@ -19,10 +21,10 @@ test-frontend:
 
 # Aliases
 smoke:
-	python -m backend.smoke_test
+	$(PYTHON) -m backend.smoke_test
 
 evals:
-	python -m backend.evals.run_evals
+	$(PYTHON) -m backend.evals.run_evals
 
 # Full stack via Docker (mock/demo providers, no keys needed)
 docker-up:
@@ -30,5 +32,5 @@ docker-up:
 
 # Install both stacks locally
 install:
-	pip install -r requirements-cpu.txt
+	$(PYTHON) -m pip install -r requirements-cpu.txt
 	cd Frontend && npm install

@@ -34,6 +34,12 @@ def _list_env(name: str, default: list[str]) -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+def _normalize_origin(origin: str) -> str:
+    # Browsers send origins without a trailing slash, so normalize config
+    # values like "http://localhost:5173/" to avoid silent CORS mismatches.
+    return origin.rstrip("/")
+
+
 # Optional — features that need it (Future Self LLM chat) fall back gracefully
 # when this is unset; nothing in the app should raise ImportError/RuntimeError
 # at import time because it's missing.
@@ -106,8 +112,16 @@ CONNECTOR_STORE_PATH: str = os.getenv(
     "CONNECTOR_STORE_PATH", str(BASE_DIR / "Connectors" / "tokens.json")
 )
 
-CHROMA_PATH: str = os.getenv("CHROMA_DB_PATH", str(BASE_DIR / "chroma_db"))
-GRAPH_PATH: str = os.getenv("GRAPH_PATH", str(BASE_DIR / "graph.gpickle"))
+# Keep every storage consumer on the same paths. CHROMA_PATH remains supported
+# for existing local .env files, while CHROMA_DB_PATH is the preferred name.
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
+CHROMA_DB_PATH: str = (
+    os.getenv("CHROMA_DB_PATH")
+    or os.getenv("CHROMA_PATH")
+    or str(DATA_DIR / "chroma_db")
+)
+CHROMA_PATH: str = CHROMA_DB_PATH
+GRAPH_PATH: str = os.getenv("GRAPH_PATH") or str(DATA_DIR / "graph.gpickle")
 
 # Local dev defaults (Vite on 5173, CRA-style on 3000). Override with a
 # comma-separated CORS_ORIGINS env var in non-local deployments — avoid "*"
@@ -115,6 +129,7 @@ GRAPH_PATH: str = os.getenv("GRAPH_PATH", str(BASE_DIR / "graph.gpickle"))
 CORS_ORIGINS: list[str] = _list_env(
     "CORS_ORIGINS", ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
 )
+CORS_ORIGINS = [_normalize_origin(origin) for origin in CORS_ORIGINS]
 
 DEMO_MODE: bool = _bool_env("DEMO_MODE", True)
 
