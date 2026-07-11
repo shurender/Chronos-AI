@@ -255,6 +255,10 @@ export interface Citation {
   label: string;
   excerpt?: string | null;
   url?: string | null;
+  source_type?: string | null;
+  source_name?: string | null;
+  source_url?: string | null;
+  timestamp?: string | null;
 }
 
 export interface GroundedDecision {
@@ -269,6 +273,19 @@ export interface ConfidenceBreakdown {
   modelConsensus: number;
   temporalRelevance: number;
   causalCoherence: number;
+}
+
+export interface DataCoverage {
+  graphNodes: number;
+  relevantPrecedents: number;
+  liveEvidence: number;
+  demoEvidence: number;
+  connectorSources: number;
+  uploadedSources: number;
+  digitalTwinCompleteness: number;
+  intakeCompleteness: number;
+  overallCoverage: number;
+  gaps: string[];
 }
 
 export interface TimelineMilestone {
@@ -348,6 +365,7 @@ export interface SimulationResponse {
   recommendedTimelineId: string;
   affectedNodeIds: string[];
   externalEvidenceUsed: EvidenceItem[];
+  dataCoverage: DataCoverage;
   isDemoEvidence: boolean;
   evidenceProvider: string | null;
   agentCouncil: AgentCouncil | null;
@@ -378,6 +396,10 @@ export interface AvatarCitation {
   label: string;
   excerpt?: string | null;
   url?: string | null;
+  source_type?: string | null;
+  source_name?: string | null;
+  source_url?: string | null;
+  timestamp?: string | null;
 }
 
 export interface AvatarChatRequest {
@@ -401,7 +423,7 @@ export interface AvatarChatResponse {
 // ---------------------------------------------------------------------------
 // Ingestion (POST /ingest/demo, /ingest/github, /ingest/upload)
 // ---------------------------------------------------------------------------
-export type IngestionSourceType = 'demo' | 'github' | 'upload';
+export type IngestionSourceType = 'demo' | 'github' | 'slack' | 'notion' | 'upload';
 export type IngestionStatus = 'pending' | 'running' | 'succeeded' | 'failed';
 
 export interface IngestGithubRequest {
@@ -419,9 +441,78 @@ export interface IngestionRun {
   chunks_created: number;
   nodes_created: number;
   edges_created: number;
+  files_received: number;
+  files_parsed: number;
+  files_failed: number;
   warnings: string[];
   errors: string[];
   source_summary: Record<string, unknown>;
+}
+
+export type ConnectorProvider = 'github' | 'slack' | 'notion';
+export type ConnectorState = 'not_connected' | 'connecting' | 'connected' | 'syncing' | 'error';
+
+export interface ConnectorStatus {
+  provider: ConnectorProvider;
+  status: ConnectorState;
+  connected: boolean;
+  last_synced: string | null;
+  last_sync_at?: string | null;
+  last_sync_status?: string | null;
+  error: string | null;
+  last_error?: string | null;
+  items_ingested?: number;
+  source_counts: Record<string, number>;
+}
+
+export interface ConnectorSyncResponse {
+  provider: ConnectorProvider;
+  status: ConnectorState;
+  run: IngestionRun | null;
+  last_synced: string | null;
+  source_counts: Record<string, number>;
+  error: string | null;
+}
+
+export interface GithubConnectorSource {
+  id: string;
+  name: string;
+  full_name: string;
+  private: boolean;
+  html_url: string | null;
+  updated_at: string | null;
+  default_branch: string | null;
+  selected: boolean;
+}
+
+export interface SlackConnectorSource {
+  id: string;
+  name: string;
+  is_private: boolean;
+  is_member: boolean;
+  num_members?: number | null;
+  selected: boolean;
+}
+
+export interface NotionConnectorSource {
+  id: string;
+  title: string;
+  type: 'page' | 'database';
+  url: string | null;
+  last_edited_time: string | null;
+  selected: boolean;
+}
+
+export type ConnectorSource = GithubConnectorSource | SlackConnectorSource | NotionConnectorSource;
+
+export interface ConnectorSyncOptions {
+  sourceIds?: string[];
+  maxItems?: number;
+  since?: string;
+  includeThreads?: boolean;
+  includeIssues?: boolean;
+  includePullRequests?: boolean;
+  repo?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -50,6 +50,19 @@ export interface ConfidenceBreakdown {
   readonly causalCoherence: number;
 }
 
+export interface DataCoverage {
+  readonly graphNodes: number;
+  readonly relevantPrecedents: number;
+  readonly liveEvidence: number;
+  readonly demoEvidence: number;
+  readonly connectorSources: number;
+  readonly uploadedSources: number;
+  readonly digitalTwinCompleteness: number;
+  readonly intakeCompleteness: number;
+  readonly overallCoverage: number;
+  readonly gaps: readonly string[];
+}
+
 /**
  * Records dissent between autonomous agents during simulation.
  */
@@ -143,6 +156,10 @@ export interface Timeline {
 
   /** Dissenting agent positions, if any. */
   readonly agentDisagreements: readonly AgentDisagreement[];
+
+  readonly evidenceUsed?: readonly string[];
+
+  readonly claimIds?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -190,4 +207,6 @@ export interface SimulationPayload {
   readonly isDemoEvidence?: boolean;
 
   readonly evidenceProvider?: string | null;
+
+  readonly dataCoverage?: DataCoverage;
 }

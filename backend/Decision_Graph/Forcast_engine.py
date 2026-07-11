@@ -25,11 +25,12 @@ import hashlib
 import math
 import random
 import uuid
+from datetime import datetime, timezone
 
 from backend.Agents.agent_council import council_to_disagreements, run_agent_council
 from backend.External_Evidence.evidence_schema import EvidenceItem
 from backend.External_Evidence.evidence_service import active_provider_name, search_evidence
-from backend.simulation_schema import Assumption, DecisionOption
+from backend.simulation_schema import Assumption, DataCoverage, DecisionOption
 from backend.schema import (
     Citation,
     ConfidenceBreakdown,
@@ -292,18 +293,22 @@ def _ground_in_graph(request: DecisionForecastRequest, k: int = 3) -> list[Groun
     """Best-effort: look for similar past decisions already sitting in the graph's
     chunk store. Never raises — grounding is a nice-to-have, not a dependency."""
     try:
-        from .query_layer import find_similar_past_decisions
+        from .query_layer import find_similar_past_decisions_clean
 
         query = f"{request.name}. {request.goal}"
-        results = find_similar_past_decisions(query, k=k)
-        ids = results.get("ids", [[]])[0]
-        docs = results.get("documents", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-
+        items = find_similar_past_decisions_clean(query, k=k).get("items", [])
         grounded = []
-        for chunk_id, doc, distance in zip(ids, docs, distances):
+        for item in items:
             grounded.append(
-                GroundedDecision(chunk_id=chunk_id, snippet=(doc or "")[:200], distance=float(distance))
+                GroundedDecision(
+                    chunk_id=item.get("chunk_id"),
+                    snippet=(item.get("snippet") or "")[:200],
+                    distance=float(item.get("distance", 1.0)),
+                    source_type=item.get("source_type"),
+                    source_name=item.get("source_name"),
+                    source_url=item.get("source_url"),
+                    timestamp=item.get("timestamp"),
+                )
             )
         return grounded
     except Exception:
@@ -368,7 +373,16 @@ def _dist_map(forecast: DecisionForecast) -> dict[str, float]:
 
 def _branch_citations(forecast: DecisionForecast) -> list[Citation]:
     return [
-        Citation(nodeId=g.chunk_id, label=(g.snippet[:80] or g.chunk_id), excerpt=g.snippet)
+        Citation(
+            nodeId=g.chunk_id,
+            label=(g.source_name or g.snippet[:80] or g.chunk_id),
+            excerpt=g.snippet,
+            url=g.source_url,
+            source_type=g.source_type,
+            source_name=g.source_name,
+            source_url=g.source_url,
+            timestamp=g.timestamp,
+        )
         for g in forecast.groundedOn
     ]
 
@@ -383,6 +397,108 @@ def _branch_probability(dist: dict[str, float]) -> float:
     return _clip((non_failure + strongest_positive) / 200.0, 0.0, 1.0)
 
 
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _evidence_is_stale(item: EvidenceItem) -> bool:
+    dt = _parse_dt(item.published_at or item.retrieved_at)
+    if not dt:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).days > 365
+
+
+def _data_coverage(
+    precedents: list[dict],
+    evidence: list[EvidenceItem],
+    twin,
+    intake,
+) -> DataCoverage:
+    graph_nodes = 0
+    connector_ids: set[str] = set()
+    uploaded_sources: set[str] = set()
+    try:
+        from backend.storage import G
+
+        graph_nodes = G.number_of_nodes()
+        for _, data in G.nodes(data=True):
+            provider = data.get("connector_provider") or data.get("source_type")
+            auth = data.get("source_auth")
+            if provider in {"github", "slack", "notion"} or auth == "authenticated":
+                connector_ids.add(str(data.get("connector_source_id") or provider))
+            if provider in {"upload", "uploaded_file"} or auth == "uploaded":
+                uploaded_sources.add(str(data.get("connector_source_id") or data.get("source_name") or "upload"))
+    except Exception:
+        graph_nodes = 0
+
+    for p in precedents:
+        provider = p.get("connector_provider") or p.get("source_type")
+        if provider in {"github", "slack", "notion"}:
+            connector_ids.add(str(p.get("connector_source_id") or provider))
+        if provider in {"upload", "uploaded_file"}:
+            uploaded_sources.add(str(p.get("connector_source_id") or provider))
+
+    live_evidence = sum(1 for e in evidence if e.is_live_source)
+    demo_evidence = sum(1 for e in evidence if e.is_demo_source)
+    uploaded_evidence = sum(1 for e in evidence if e.source_kind == "uploaded")
+    digital_twin_completeness = (
+        float(twin.confidenceBreakdown.overallConfidence) if twin else 0.0
+    )
+    intake_completeness = float(intake.completenessScore) if intake else 0.0
+    relevant_precedents = len(precedents)
+    connector_count = len(connector_ids)
+    uploaded_count = len(uploaded_sources) + uploaded_evidence
+
+    graph_score = _clip(graph_nodes / 50.0, 0.0, 1.0)
+    precedent_score = _clip(relevant_precedents / 5.0, 0.0, 1.0)
+    evidence_score = _clip((live_evidence + uploaded_evidence * 0.8 + demo_evidence * 0.25) / 5.0, 0.0, 1.0)
+    source_score = _clip((connector_count + uploaded_count * 0.7) / 3.0, 0.0, 1.0)
+    overall = _clip(
+        graph_score * 0.2
+        + precedent_score * 0.2
+        + evidence_score * 0.2
+        + source_score * 0.2
+        + digital_twin_completeness * 0.1
+        + intake_completeness * 0.1,
+        0.0,
+        1.0,
+    )
+
+    gaps: list[str] = []
+    if connector_count == 0 and uploaded_count == 0:
+        gaps.append("No authenticated connector or uploaded workspace data is available.")
+    if relevant_precedents == 0:
+        gaps.append("No similar past decisions were found in the memory graph.")
+    if live_evidence == 0:
+        gaps.append("No live external evidence was available for this simulation.")
+    if demo_evidence and live_evidence == 0 and connector_count == 0:
+        gaps.append("Demo evidence is being used and is weighted lower than live/user data.")
+    if digital_twin_completeness < 0.4:
+        gaps.append("Digital twin profile is sparse.")
+    if intake_completeness < 0.6:
+        gaps.append("Decision intake is missing important context.")
+
+    return DataCoverage(
+        graphNodes=graph_nodes,
+        relevantPrecedents=relevant_precedents,
+        liveEvidence=live_evidence,
+        demoEvidence=demo_evidence,
+        connectorSources=connector_count,
+        uploadedSources=uploaded_count,
+        digitalTwinCompleteness=round(_clip(digital_twin_completeness, 0.0, 1.0), 3),
+        intakeCompleteness=round(_clip(intake_completeness, 0.0, 1.0), 3),
+        overallCoverage=round(overall, 3),
+        gaps=gaps,
+    )
+
+
 def _branch_confidence(
     forecast: DecisionForecast,
     horizon_months: int,
@@ -391,6 +507,7 @@ def _branch_confidence(
     assumption_conf: float = 0.5,
     twin_completeness: float = 0.0,
     precedent_strength: float = 0.0,
+    data_coverage: DataCoverage | None = None,
 ) -> ConfidenceBreakdown:
     grounded = forecast.groundedOn
 
@@ -407,15 +524,30 @@ def _branch_confidence(
 
     temporal = _clip(1.0 - horizon_months / 120.0, 0.0, 1.0)
 
-    # External evidence lifts source reliability (by count AND confidence) and
-    # temporal relevance (external signals are more current than the graph).
-    evidence_coverage = _clip(len(evidence) / 4.0, 0.0, 1.0)  # 4+ items = full coverage
-    avg_evidence_conf = (
-        sum(e.confidence for e in evidence) / len(evidence) if evidence else 0.0
+    # Evidence strength is weighted by provenance: live web and user/uploaded
+    # data count more than demo evidence.
+    weighted_evidence = sum(
+        1.0 if e.is_live_source else 0.8 if e.source_kind == "uploaded" else 0.35 for e in evidence
     )
-    source = _clip(source + evidence_coverage * avg_evidence_conf * 0.4, 0.0, 1.0)
+    evidence_coverage = _clip(weighted_evidence / 4.0, 0.0, 1.0)  # 4 weighted items = full coverage
+    avg_evidence_conf = sum(e.confidence for e in evidence) / len(evidence) if evidence else 0.0
+    live_count = data_coverage.liveEvidence if data_coverage else sum(1 for e in evidence if e.is_live_source)
+    demo_count = data_coverage.demoEvidence if data_coverage else sum(1 for e in evidence if e.is_demo_source)
+    real_connector_count = data_coverage.connectorSources if data_coverage else 0
+    source = _clip(source + evidence_coverage * avg_evidence_conf * 0.35, 0.0, 1.0)
     source = _clip(source + precedent_strength * 0.15, 0.0, 1.0)  # historical precedent strength
-    temporal = _clip(temporal + evidence_coverage * 0.15, 0.0, 1.0)
+    if live_count:
+        source = _clip(source + min(live_count, 3) * 0.04, 0.0, 1.0)
+        temporal = _clip(temporal + 0.12, 0.0, 1.0)
+    if real_connector_count and precedent_strength:
+        source = _clip(source + 0.08, 0.0, 1.0)
+        grounded_strength = _clip(grounded_strength + 0.12, 0.0, 1.0)
+    if demo_count and not live_count and real_connector_count == 0:
+        source = _clip(source * 0.85, 0.0, 1.0)
+    temporal = _clip(temporal + evidence_coverage * 0.08, 0.0, 1.0)
+    stale_count = sum(1 for e in evidence if _evidence_is_stale(e))
+    if stale_count:
+        temporal = _clip(temporal - min(stale_count, 4) * 0.04, 0.0, 1.0)
 
     # Evidence strength blends graph grounding, evidence coverage, and how
     # confident this branch's own assumptions are.
@@ -429,6 +561,11 @@ def _branch_confidence(
         avg_risk = 50.0
     causal = _clip(1.0 - avg_risk / 100.0, 0.0, 1.0)
     causal = _clip(causal + twin_completeness * 0.15, 0.0, 1.0)  # digital twin completeness
+    if data_coverage and data_coverage.overallCoverage < 0.3:
+        low_data_factor = _clip(0.72 + data_coverage.overallCoverage, 0.72, 1.0)
+        evidence_strength *= low_data_factor
+        source *= low_data_factor
+        causal *= low_data_factor
 
     return ConfidenceBreakdown(
         evidenceStrength=round(evidence_strength, 3),
@@ -647,7 +784,7 @@ def _branch_specs(request: SimulationRequest) -> list[tuple[str, str, str, Decis
 
 
 def _record_provenance(
-    branches: list[TimelineBranch], recommended_id: str, simulation_id: str
+    branches: list[TimelineBranch], recommended_id: str, simulation_id: str, evidence: list[EvidenceItem]
 ) -> dict:
     """Create ClaimRecords for each branch's assumptions / milestones / risk, plus
     one recommendation claim. Sets branch.claimIds and returns a summary dict.
@@ -657,6 +794,7 @@ def _record_provenance(
 
     by_type: dict[str, int] = {}
     total = 0
+    evidence_by_id = {item.id: item for item in evidence}
 
     def _emit(branch: TimelineBranch, text: str, ctype: str, conf: float, evidence_ids, reason):
         nonlocal total
@@ -667,6 +805,18 @@ def _record_provenance(
                 created_by="simulation",
                 source_ids=list(branch.anchorNodeIds),
                 evidence_ids=list(evidence_ids),
+                source_links=[
+                    {
+                        "source_id": evidence_by_id[eid].id,
+                        "source_type": evidence_by_id[eid].source_kind,
+                        "source_name": evidence_by_id[eid].source_name,
+                        "source_url": evidence_by_id[eid].source_url,
+                        "timestamp": evidence_by_id[eid].published_at or evidence_by_id[eid].retrieved_at,
+                        "excerpt": evidence_by_id[eid].summary,
+                    }
+                    for eid in evidence_ids
+                    if eid in evidence_by_id
+                ],
                 graph_node_ids=list(branch.anchorNodeIds),
                 confidence=round(float(conf), 3),
                 uncertainty_reason=reason,
@@ -769,6 +919,33 @@ def generate_simulation(
     twin_completeness = twin.confidenceBreakdown.overallConfidence if twin else 0.0
     twin_factors = _twin_factors(twin)
 
+    # Clarifying Intake analysis - detect missing decision context before branch
+    # scoring so low-completeness runs are visibly less confident.
+    intake = None
+    try:
+        from backend.Intake.intake_schema import IntakeAnalyzeRequest
+        from backend.Intake.intake_service import analyze_intake
+
+        intake = analyze_intake(
+            IntakeAnalyzeRequest(
+                decisionQuestion=request.name,
+                decisionType=request.type,
+                horizon=request.horizon,
+                risk=request.risk,
+                goal=request.goal,
+                constraints=request.constraints,
+                geography=request.geography,
+                options=option_labels,
+                digitalTwinProfile=(twin.model_dump(mode="json") if twin else None),
+                evidenceCount=len(evidence),
+                precedentCount=len(precedents),
+            )
+        )
+    except Exception:
+        intake = None
+
+    data_coverage = _data_coverage(precedents, evidence, twin, intake)
+
     # Build one branch per spec (option-aware; see _branch_specs).
     branches: list[TimelineBranch] = []
     forecasts: dict[str, DecisionForecast] = {}
@@ -802,7 +979,14 @@ def generate_simulation(
                 status="active",
                 milestones=_branch_milestones(title, forecast, citations, horizon_months),
                 confidenceBreakdown=_branch_confidence(
-                    forecast, horizon_months, dist, evidence, assumption_conf, twin_completeness, precedent_strength
+                    forecast,
+                    horizon_months,
+                    dist,
+                    evidence,
+                    assumption_conf,
+                    twin_completeness,
+                    precedent_strength,
+                    data_coverage,
                 ),
                 anchorNodeIds=[g.chunk_id for g in forecast.groundedOn],
                 agentDisagreements=[],  # filled from the agent council below
@@ -842,29 +1026,6 @@ def generate_simulation(
 
     # Clarifying Intake analysis — detect missing decision context. Never blocks
     # (decisionQuestion is always present here); low completeness -> confidence penalty.
-    intake = None
-    try:
-        from backend.Intake.intake_schema import IntakeAnalyzeRequest
-        from backend.Intake.intake_service import analyze_intake
-
-        intake = analyze_intake(
-            IntakeAnalyzeRequest(
-                decisionQuestion=request.name,
-                decisionType=request.type,
-                horizon=request.horizon,
-                risk=request.risk,
-                goal=request.goal,
-                constraints=request.constraints,
-                geography=request.geography,
-                options=option_labels,
-                digitalTwinProfile=(twin.model_dump(mode="json") if twin else None),
-                evidenceCount=len(evidence),
-                precedentCount=len(precedents),
-            )
-        )
-    except Exception:
-        intake = None
-
     intake_missing = intake.missingFields if intake else None
     intake_low = bool(intake and intake.completenessScore < 0.6)
 
@@ -878,6 +1039,7 @@ def generate_simulation(
         twin=twin,
         intake_missing_fields=intake_missing,
         intake_low_completeness=intake_low,
+        data_coverage=data_coverage.model_dump(),
         agent_mode=_agent_mode(),
     )
 
@@ -907,7 +1069,7 @@ def generate_simulation(
     # Provenance: record traceable claims for every branch. Best-effort.
     provenance_summary = None
     try:
-        provenance_summary = _record_provenance(branches, recommended.id, simulation_id)
+        provenance_summary = _record_provenance(branches, recommended.id, simulation_id, evidence)
     except Exception:
         provenance_summary = None
 
@@ -917,6 +1079,8 @@ def generate_simulation(
         recommendedTimelineId=recommended.id,
         affectedNodeIds=affected,
         externalEvidenceUsed=evidence,
+        dataCoverage=data_coverage,
+        isDemoEvidence=all(e.is_demo_source for e in evidence) if evidence else True,
         evidenceProvider=evidence_provider,
         agentCouncil=council,
         digitalTwinProfileId=twin.profile_id if twin else None,

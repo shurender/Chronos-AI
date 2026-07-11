@@ -13,14 +13,31 @@ services:
     environment:
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       EVIDENCE_PROVIDER: ${EVIDENCE_PROVIDER:-demo}
+      REQUIRE_LIVE_LLM: ${REQUIRE_LIVE_LLM:-false}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
       AGENT_MODE: ${AGENT_MODE:-deterministic}
       DEMO_MODE: ${DEMO_MODE:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       FIREWORKS_API_KEY: ${FIREWORKS_API_KEY:-}
-      FIREWORKS_MODEL: ${FIREWORKS_MODEL:-accounts/fireworks/models/llama-v3p1-70b-instruct}
+      FIREWORKS_MODEL: ${FIREWORKS_MODEL:-accounts/fireworks/models/gpt-oss-120b}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:8000/connectors/github/callback}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-http://localhost:8000/connectors/slack/callback}
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
+      NOTION_REDIRECT_URI: ${NOTION_REDIRECT_URI:-http://localhost:8000/connectors/notion/callback}
+      NOTION_VERSION: ${NOTION_VERSION:-2026-03-11}
+      NOTION_TOKEN: ${NOTION_TOKEN:-}
+      CONNECTOR_TOKEN_STORE: ${CONNECTOR_TOKEN_STORE:-local}
+      CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY:-dev-only-local-key}
+      CONNECTOR_STORE_PATH: /data/connectors.json
       # All local stores centralized under the mounted /data volume.
       DATA_DIR: /data
       CHROMA_DB_PATH: /data/chroma_db

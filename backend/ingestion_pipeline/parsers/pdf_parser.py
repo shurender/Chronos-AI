@@ -5,12 +5,22 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     pypdf = None
 
+MISSING_PYPDF_MESSAGE = (
+    "PDF parsing dependency pypdf is not installed. Run pip install -r requirements-cpu.txt."
+)
+NO_TEXT_PDF_MESSAGE = (
+    "No selectable text found in this PDF. It may be scanned/image-only. OCR is not enabled yet."
+)
 
-def parse_pdf_resume(pdf_path, author=None):
+
+class PdfParserError(RuntimeError):
+    pass
+
+
+def parse_pdf_resume(pdf_path, author=None, warnings=None):
     chunks = []
     if pypdf is None:
-        print(f"PDF parsing skipped for {pdf_path}: pypdf is not installed")
-        return chunks
+        raise PdfParserError(MISSING_PYPDF_MESSAGE)
 
     try:
         reader = pypdf.PdfReader(pdf_path)
@@ -33,6 +43,10 @@ def parse_pdf_resume(pdf_path, author=None):
                     "total_pages": len(reader.pages)
                 }
             })
+    except PdfParserError:
+        raise
     except Exception as e:
-        print(f"Error reading PDF {pdf_path}: {e}")
+        raise PdfParserError(f"Error reading PDF {pdf_path}: {e}") from e
+    if not chunks and warnings is not None:
+        warnings.append(NO_TEXT_PDF_MESSAGE)
     return chunks

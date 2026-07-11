@@ -46,6 +46,10 @@ class GroundedDecision(BaseModel):
     chunk_id: str
     snippet: str
     distance: float
+    source_type: Optional[str] = None
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    timestamp: Optional[str] = None
 
 
 class Citation(BaseModel):
@@ -55,6 +59,10 @@ class Citation(BaseModel):
     label: str
     excerpt: Optional[str] = None
     url: Optional[str] = None
+    source_type: Optional[str] = None
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    timestamp: Optional[str] = None
 
 
 class ConfidenceBreakdown(BaseModel):
@@ -63,6 +71,19 @@ class ConfidenceBreakdown(BaseModel):
     modelConsensus: float = Field(ge=0.0, le=1.0)
     temporalRelevance: float = Field(ge=0.0, le=1.0)
     causalCoherence: float = Field(ge=0.0, le=1.0)
+
+
+class DataCoverage(BaseModel):
+    graphNodes: int = 0
+    relevantPrecedents: int = 0
+    liveEvidence: int = 0
+    demoEvidence: int = 0
+    connectorSources: int = 0
+    uploadedSources: int = 0
+    digitalTwinCompleteness: float = Field(default=0.0, ge=0.0, le=1.0)
+    intakeCompleteness: float = Field(default=0.0, ge=0.0, le=1.0)
+    overallCoverage: float = Field(default=0.0, ge=0.0, le=1.0)
+    gaps: list[str] = Field(default_factory=list)
 
 
 class TimelineMilestone(BaseModel):
@@ -182,6 +203,8 @@ class SimulationResponse(BaseModel):
     # Stored by value so changing the evidence store later cannot retroactively
     # alter what a past simulation meant.
     externalEvidenceUsed: list[EvidenceItem] = Field(default_factory=list)
+    # How much real, recent, personal/workspace data grounded this run.
+    dataCoverage: DataCoverage = Field(default_factory=DataCoverage)
     isDemoEvidence: bool = True
     # Which evidence provider produced the snapshot (demo | uploaded | web | hybrid).
     evidenceProvider: Optional[str] = None
@@ -202,9 +225,9 @@ class SimulationResponse(BaseModel):
     # add a professional-advice warning and use conservative confidence.
     safety: Optional[SafetyLabel] = None
     methodology: str = (
-        "Structured heuristic simulation, not a guaranteed prediction. Three "
+        "Structured scenario reasoning aid, not a guaranteed prediction. Three "
         "branches (Conservative / Balanced / Aggressive) are derived from the same "
-        "deterministic engine with varied risk assumptions, seeded off your request "
+        "deterministic heuristic engine with varied risk assumptions, seeded off your request "
         "text so repeated calls are stable. Confidence and grounding reflect only "
         "what is available in your graph — treat as a reasoning aid, not a forecast."
     )

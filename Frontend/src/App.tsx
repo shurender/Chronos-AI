@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2, MessageSquare, FileText } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, FileText, Loader2, MessageSquare, Plug, Upload } from 'lucide-react';
 import { useState, useEffect, useLayoutEffect } from 'react';
 import { FutureSelfChat } from './components/chat/FutureSelfChat';
 import { MemoryGraphView } from './components/graph/MemoryGraphView';
@@ -6,6 +6,7 @@ import { StepProgressBar } from './components/layout/StepProgressBar';
 import { TimelineCard } from './components/timeline/TimelineCard';
 import { useChronosStore } from './store/useChronosStore';
 import { LandingPage } from './components/layout/LandingPage';
+import type { ConnectorProvider, ConnectorSource, ConnectorStatus } from './api/contracts';
 
 // Custom Minimal SVGs for Logos
 const NotionIcon = ({ className }: { className?: string }) => (
@@ -28,21 +29,78 @@ const GithubIcon = ({ className }: { className?: string }) => (
 
 // ── Step 1: Connect Data ──────────────────────────────────────────────────────
 function ConnectDataView() {
+  const [maxItems, setMaxItems] = useState(200);
   const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
+  const startConnector = useChronosStore((state) => state.startConnector);
+  const loadConnectorSources = useChronosStore((state) => state.loadConnectorSources);
+  const selectConnectorSources = useChronosStore((state) => state.selectConnectorSources);
+  const syncConnector = useChronosStore((state) => state.syncConnector);
+  const uploadFiles = useChronosStore((state) => state.uploadFiles);
+  const refreshConnectors = useChronosStore((state) => state.refreshConnectors);
+  const connectorStatuses = useChronosStore((state) => state.connectorStatuses);
+  const connectorSources = useChronosStore((state) => state.connectorSources);
+  const selectedConnectorSourceIds = useChronosStore((state) => state.selectedConnectorSourceIds);
   const connectStatus = useChronosStore((state) => state.connectStatus);
   const errorMessage = useChronosStore((state) => state.errorMessage);
   const backendStatus = useChronosStore((state) => state.backendStatus);
   const isLoading = useChronosStore((state) => state.isLoading);
+
+  useEffect(() => {
+    void refreshConnectors();
+  }, [refreshConnectors]);
+
+  useEffect(() => {
+    (['github', 'slack', 'notion'] as ConnectorProvider[]).forEach((provider) => {
+      if (connectorStatuses[provider].connected && connectorSources[provider].length === 0) {
+        void loadConnectorSources(provider);
+      }
+    });
+  }, [connectorStatuses, connectorSources, loadConnectorSources]);
+
   const sources = [
-    { icon: GithubIcon,   label: 'GitHub',   sub: 'Commits & issues'  },
-    { icon: SlackIcon,    label: 'Slack',    sub: 'Threads & channels' },
-    { icon: NotionIcon,   label: 'Notion',   sub: 'Docs & pages'       },
-    { icon: FileText,     label: 'PDFs',     sub: 'Resumes & reports'  },
+    { provider: 'github', icon: GithubIcon, label: 'Connect GitHub', sub: 'Commits & issues' },
+    { provider: 'slack', icon: SlackIcon, label: 'Connect Slack', sub: 'Threads & channels' },
+    { provider: 'notion', icon: NotionIcon, label: 'Connect Notion', sub: 'Docs & pages' },
   ] as const;
+
+  const sourceLabel = (source: ConnectorSource) => {
+    if ('full_name' in source) return source.full_name;
+    if ('title' in source) return source.title;
+    return `#${source.name}`;
+  };
+
+  const sourceMeta = (source: ConnectorSource) => {
+    if ('private' in source) return source.private ? 'Private repo' : 'Public repo';
+    if ('is_private' in source) return source.is_private ? (source.is_member ? 'Private channel' : 'Private, not joined') : 'Public channel';
+    return source.type;
+  };
+
+  const toggleSource = (provider: ConnectorProvider, sourceId: string) => {
+    const current = selectedConnectorSourceIds[provider];
+    const next = current.includes(sourceId)
+      ? current.filter((id) => id !== sourceId)
+      : [...current, sourceId];
+    void selectConnectorSources(provider, next);
+  };
+
+  const statusText = (status: ConnectorStatus) => {
+    if (status.status === 'not_connected') return 'Not connected';
+    if (status.status === 'syncing') return 'Syncing';
+    if (status.status === 'connecting') return 'Connecting';
+    if (status.status === 'connected') return status.last_synced ? `Last synced ${new Date(status.last_synced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Connected';
+    return 'Error';
+  };
+
+  const statusClass = (status: ConnectorStatus) => {
+    if (status.status === 'connected') return 'text-emerald-700';
+    if (status.status === 'syncing' || status.status === 'connecting') return 'text-amber-700';
+    if (status.status === 'error') return 'text-red-600';
+    return 'text-gray-500';
+  };
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-xl">
+      <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-xl">
         <h1 className="text-3xl font-serif tracking-tight text-gray-900">
           Connect Your Data Sources
         </h1>
@@ -54,29 +112,126 @@ function ConnectDataView() {
           Backend {backendStatus === 'connected' ? 'connected' : backendStatus === 'disconnected' ? 'disconnected' : 'checking...'}
         </p>
 
-        <div className="mt-10 grid grid-cols-2 gap-4 group">
-          {sources.map(({ icon: Icon, label, sub }) => (
+        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {sources.map(({ provider, icon: Icon, label, sub }) => {
+            const status = connectorStatuses[provider];
+            const availableSources = connectorSources[provider];
+            const selectedIds = selectedConnectorSourceIds[provider];
+            return (
             <div
               key={label}
-              className="flex flex-col items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-6 py-6 text-center transition-all duration-500 group-hover:opacity-30 hover:!opacity-100 hover:scale-105 cursor-pointer hover:border-gray-300 hover:bg-white hover:shadow-md"
+              className="flex min-h-[310px] flex-col items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-5 py-5 text-center transition-all duration-300 hover:border-gray-300 hover:bg-white hover:shadow-md"
             >
               <Icon className="size-7 text-gray-800" />
               <div>
                 <span className="block text-sm font-semibold text-gray-900">{label}</span>
                 <span className="block mt-0.5 text-[11px] text-gray-500">{sub}</span>
               </div>
+              <div className={`mt-auto flex items-center gap-1.5 text-[11px] font-medium ${statusClass(status)}`}>
+                {status.status === 'connected' ? <CheckCircle2 className="size-3.5" /> : status.status === 'error' ? <AlertCircle className="size-3.5" /> : <Plug className="size-3.5" />}
+                <span>{statusText(status)}</span>
+              </div>
+              {status.connected && (
+                <div className="w-full rounded-lg border border-gray-200 bg-white p-2 text-left">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-gray-700">{selectedIds.length} selected</span>
+                    <button
+                      type="button"
+                      onClick={() => void loadConnectorSources(provider)}
+                      className="text-[11px] font-semibold text-gray-500 hover:text-gray-900"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {availableSources.length === 0 ? (
+                    <p className="text-[11px] text-gray-500">Refresh to choose sources.</p>
+                  ) : (
+                    <div className="max-h-32 space-y-1 overflow-auto pr-1">
+                      {availableSources.slice(0, 20).map((source) => {
+                        const disabled = 'is_private' in source && source.is_private && !source.is_member;
+                        return (
+                          <label key={source.id} className={`flex gap-2 rounded-md px-1 py-1 text-[11px] ${disabled ? 'text-gray-400' : 'text-gray-700'}`}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(source.id)}
+                              disabled={disabled || isLoading}
+                              onChange={() => toggleSource(provider, source.id)}
+                              className="mt-0.5 size-3 accent-gray-900"
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{sourceLabel(source)}</span>
+                              <span className="block truncate text-gray-400">{sourceMeta(source)}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (status.connected) {
+                    void syncConnector(provider, { sourceIds: selectedIds, maxItems });
+                  } else {
+                    startConnector(provider);
+                  }
+                }}
+                disabled={isLoading}
+                className="w-full rounded-lg border border-gray-900 bg-gray-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {status.status === 'syncing' ? 'Syncing...' : status.connected ? 'Sync selected' : 'Connect'}
+              </button>
+              {status.error && <p className="text-[11px] leading-snug text-red-600">{status.error}</p>}
+              {status.connected && (
+                <p className="text-[11px] text-gray-500">
+                  {(status.source_counts.new ?? 0)} new · {(status.source_counts.updated ?? 0)} updated · {(status.source_counts.skipped_duplicate ?? 0)} skipped
+                </p>
+              )}
+              {status.connected && (
+                <p className="text-[11px] text-gray-500">
+                  {status.items_ingested ?? status.source_counts.chunks ?? 0} items · {status.source_counts.nodes ?? 0} nodes
+                </p>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
-        <button
-          onClick={() => void loadDemoWorkspace()}
-          disabled={isLoading}
-          className="mt-10 inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-gray-900 bg-gray-900 px-6 py-4 text-sm font-semibold text-white transition-all duration-200 hover:bg-gray-800"
-        >
-          <GithubIcon className="size-4" aria-hidden="true" />
-          {isLoading ? 'Loading Demo Workspace...' : 'Load Demo Workspace'}
-        </button>
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800">
+            Max items
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={maxItems}
+              onChange={(event) => setMaxItems(Number(event.target.value))}
+              className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+            />
+          </label>
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition hover:border-gray-300 hover:bg-gray-50">
+            <Upload className="size-4" aria-hidden="true" />
+            Upload files
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                if (event.target.files?.length) void uploadFiles(event.target.files);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+          <button
+            onClick={() => void loadDemoWorkspace()}
+            disabled={isLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <FileText className="size-4" aria-hidden="true" />
+            {isLoading ? 'Loading sample data...' : 'Use sample demo data'}
+          </button>
+        </div>
         {connectStatus && <p className="mt-3 text-xs text-emerald-700">{connectStatus}</p>}
         {errorMessage && <p className="mt-3 text-xs text-red-600">{errorMessage}</p>}
       </div>
@@ -229,6 +384,14 @@ function ExternalEvidencePanel() {
                   <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">{Math.round(e.confidence * 100)}%</span>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-gray-600">{e.summary}</p>
+                <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                  <span className="truncate">{e.is_live_source ? 'Live' : e.is_demo_source ? 'Demo' : 'Source'} · {e.source_name}</span>
+                  {e.source_url && (
+                    <a href={e.source_url} target="_blank" rel="noreferrer" className="shrink-0 font-semibold text-gray-800 underline underline-offset-2">
+                      Open
+                    </a>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -273,6 +436,8 @@ function AgentCouncilPanel() {
 function SimulateFuturesView() {
   const simulationData = useChronosStore((state) => state.simulationData);
   const setStep = useChronosStore((state) => state.setStep);
+  const selectedTimelineId = useChronosStore((state) => state.selectedTimelineId);
+  const setSelectedTimelineId = useChronosStore((state) => state.setSelectedTimelineId);
   const [activeTab, setActiveTab] = useState<'timelines' | 'graph'>('timelines');
 
   if (!simulationData) return <div className="flex flex-1 items-center justify-center text-sm text-gray-500 bg-gray-50">No data available. Run simulation from Step 2.</div>;
@@ -302,7 +467,12 @@ function SimulateFuturesView() {
             <AgentCouncilPanel />
             <div className="flex min-h-0 flex-1 gap-6 overflow-auto p-8 items-start">
               {simulationData.timelines.map((timeline) => (
-                <TimelineCard key={timeline.id} timeline={timeline} />
+                <TimelineCard
+                  key={timeline.id}
+                  timeline={timeline}
+                  selected={selectedTimelineId === timeline.id}
+                  onSelect={setSelectedTimelineId}
+                />
               ))}
             </div>
           </section>

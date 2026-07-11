@@ -54,6 +54,8 @@ function milestoneOpacity(dataSparsity: number): number {
 export interface TimelineCardProps {
   readonly timeline: Timeline;
   readonly className?: string;
+  readonly selected?: boolean;
+  readonly onSelect?: (timelineId: string) => void;
 }
 
 function MilestoneRow({ milestone }: { readonly milestone: TimelineMilestone }) {
@@ -77,16 +79,20 @@ function MilestoneRow({ milestone }: { readonly milestone: TimelineMilestone }) 
   );
 }
 
-export function TimelineCard({ timeline, className = '' }: TimelineCardProps) {
+export function TimelineCard({ timeline, className = '', selected = false, onSelect }: TimelineCardProps) {
   const regretLevel = getRegretLevel(timeline.expectedRegret);
   const regretStyle = REGRET_STYLES[regretLevel];
   const isRecommended = timeline.status === 'recommended';
 
   return (
     <article
+      onClick={() => onSelect?.(timeline.id)}
       className={[
         'flex w-96 shrink-0 flex-col rounded-xl border bg-white shadow-sm',
-        isRecommended
+        onSelect ? 'cursor-pointer transition hover:border-indigo-300' : '',
+        selected
+          ? 'border-indigo-500 ring-2 ring-indigo-200'
+          : isRecommended
           ? 'border-indigo-300 ring-2 ring-indigo-100'
           : 'border-gray-200',
         className,

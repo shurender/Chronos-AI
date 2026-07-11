@@ -50,6 +50,10 @@ class SourceRecord(BaseModel):
     source_type: str  # e.g. github_commit, slack_message, uploaded_file, evidence_pack
     source_name: str
     uri: Optional[str] = None
+    source_url: Optional[str] = None
+    connector_provider: Optional[str] = None
+    external_id: Optional[str] = None
+    content_hash: Optional[str] = None
     retrieved_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     author: Optional[str] = None
     timestamp: Optional[str] = None
@@ -66,6 +70,7 @@ class ClaimRecord(BaseModel):
     claim_type: ClaimType
     created_by: ClaimAuthor
     source_ids: list[str] = Field(default_factory=list)
+    source_links: list[dict] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     graph_node_ids: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)

@@ -22,6 +22,7 @@ from backend.simulation_schema import (
     BranchStatus,
     Citation,
     ConfidenceBreakdown,
+    DataCoverage,
     DecisionType,
     GroundedDecision,
     Horizon,
@@ -63,6 +64,15 @@ class GraphNode(BaseModel):
     source_ids: list[str] = Field(default_factory=list)
     evidence_type: EvidenceType
     confidence: float = Field(ge=0.0, le=1.0)
+    source_type: Optional[str] = None
+    source_auth: Optional[str] = None
+    source_live: bool = False
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    external_id: Optional[str] = None
+    content_hash: Optional[str] = None
+    connector_provider: Optional[str] = None
+    connector_source_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     @model_validator(mode="after")

@@ -24,8 +24,12 @@ FROZEN_MODEL_FIELDS = {
     "SimulationRequest": {"name", "type", "horizon", "risk", "goal", "constraints", "geography", "options"},
     "SimulationResponse": {
         "metadata", "timelines", "recommendedTimelineId", "affectedNodeIds", "externalEvidenceUsed",
-        "isDemoEvidence", "evidenceProvider", "agentCouncil", "digitalTwinProfileId", "digitalTwinSummary",
+        "dataCoverage", "isDemoEvidence", "evidenceProvider", "agentCouncil", "digitalTwinProfileId", "digitalTwinSummary",
         "intakeAnalysis", "simulationId", "provenanceSummary", "safety", "methodology",
+    },
+    "DataCoverage": {
+        "graphNodes", "relevantPrecedents", "liveEvidence", "demoEvidence", "connectorSources",
+        "uploadedSources", "digitalTwinCompleteness", "intakeCompleteness", "overallCoverage", "gaps",
     },
     "TimelineBranch": {
         "id", "title", "description", "probabilityScore", "expectedRegret", "status", "milestones",
@@ -61,7 +65,7 @@ FROZEN_MODEL_FIELDS = {
     },
     "IngestionRun": {
         "run_id", "source_type", "status", "started_at", "completed_at", "chunks_created", "nodes_created",
-        "edges_created", "warnings", "errors", "source_summary",
+        "edges_created", "files_received", "files_parsed", "files_failed", "warnings", "errors", "source_summary",
     },
 }
 
@@ -75,6 +79,7 @@ def _models():
     from backend.Intake.intake_schema import IntakeAnalysis
     from backend.simulation_schema import (
         ConfidenceBreakdown,
+        DataCoverage,
         SimulationRequest,
         SimulationResponse,
         TimelineBranch,
@@ -83,6 +88,7 @@ def _models():
     return {
         "SimulationRequest": SimulationRequest, "SimulationResponse": SimulationResponse,
         "TimelineBranch": TimelineBranch, "ConfidenceBreakdown": ConfidenceBreakdown,
+        "DataCoverage": DataCoverage,
         "EvidenceItem": EvidenceItem, "AgentCouncil": AgentCouncil, "AgentOutput": AgentOutput,
         "AvatarChatRequest": AvatarChatRequest, "AvatarChatResponse": AvatarChatResponse,
         "IntakeAnalysis": IntakeAnalysis, "DigitalTwinProfile": DigitalTwinProfile,
@@ -129,6 +135,18 @@ def test_graph_contract(client=None):
     c = client or _client()
     g = c.get("/graph").json()
     _require(g, {"nodes", "edges"}, "/graph")
+    summary = c.get("/graph/summary").json()
+    _require(
+        summary,
+        {
+            "nodeCountsByType", "edgeCountsByType", "topProjects", "topDecisions", "topOutcomes",
+            "topPeople", "recentSources", "mostConnectedNodes", "graphHealth",
+        },
+        "/graph/summary",
+    )
+    _require(summary["graphHealth"], {"totalNodes", "totalEdges", "orphanNodes", "averageDegree"}, "/graph/summary graphHealth")
+    focused = c.get("/graph/focus?depth=1&limit=10").json()
+    _require(focused, {"nodes", "edges", "metadata"}, "/graph/focus")
 
 
 def test_evidence_contract(client=None):
@@ -188,7 +206,7 @@ def run() -> int:
     # model freeze first (no client needed)
     try:
         test_model_field_freeze()
-        print("  ok - model-field freeze (12 models)")
+        print(f"  ok - model-field freeze ({len(FROZEN_MODEL_FIELDS)} models)")
     except AssertionError as exc:
         print(f"  FAIL - model-field freeze: {exc}")
         return 1

@@ -18,7 +18,14 @@ def _respond(run: IngestionRun) -> IngestionRun:
     if run.status == "failed":
         raise HTTPException(
             status_code=502,
-            detail={"run_id": run.run_id, "errors": run.errors or ["Ingestion failed for an unknown reason."]},
+            detail={
+                "run_id": run.run_id,
+                "errors": run.errors or ["Ingestion failed for an unknown reason."],
+                "warnings": run.warnings,
+                "files_received": run.files_received,
+                "files_parsed": run.files_parsed,
+                "files_failed": run.files_failed,
+            },
         )
     return run
 

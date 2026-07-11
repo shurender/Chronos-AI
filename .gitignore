@@ -23,3 +23,5 @@ backend/Digital_Twin/profiles.json
 backend/External_Evidence/uploaded_evidence.json
 backend/Provenance/provenance.db
 backend/Simulation/simulations.db
+backend/Connectors/tokens.json
+backend/Connectors/*.json

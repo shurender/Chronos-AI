@@ -14,12 +14,16 @@ function createMessageId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function normalizeCitations(citations: readonly { nodeId: string; label: string; excerpt?: string | null; url?: string | null }[]): Citation[] {
+function normalizeCitations(citations: readonly { nodeId: string; label: string; excerpt?: string | null; url?: string | null; source_type?: string | null; source_name?: string | null; source_url?: string | null; timestamp?: string | null }[]): Citation[] {
   return citations.map((citation) => ({
     nodeId: citation.nodeId,
     label: citation.label,
     excerpt: citation.excerpt ?? undefined,
     url: citation.url ?? undefined,
+    source_type: citation.source_type ?? undefined,
+    source_name: citation.source_name ?? undefined,
+    source_url: citation.source_url ?? undefined,
+    timestamp: citation.timestamp ?? undefined,
   }));
 }
 
@@ -73,6 +77,31 @@ interface CitationChipProps {
 }
 
 function CitationChip({ citation, veracity }: CitationChipProps) {
+  const href = citation.source_url ?? citation.url;
+  const label = citation.source_name ?? citation.label;
+  const provider = citation.source_type ?? 'source';
+  const content = (
+    <>
+      <VeracityBadge type={veracity} />
+      <span className="rounded bg-gray-100 px-1 text-[9px] font-semibold uppercase text-gray-500">{provider}</span>
+      <span className="truncate text-gray-700 group-hover:text-gray-900">
+        {label}
+      </span>
+    </>
+  );
+  if (href?.startsWith('http')) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        title={citation.excerpt ?? label}
+        className="group inline-flex max-w-full items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1 font-mono text-[11px] text-gray-500 transition-all duration-150 hover:border-gray-900 hover:bg-gray-50"
+      >
+        {content}
+      </a>
+    );
+  }
   return (
     <button
       type="button"
@@ -83,10 +112,7 @@ function CitationChip({ citation, veracity }: CitationChipProps) {
         hover:border-gray-900 hover:bg-gray-50
         transition-all duration-150"
     >
-      <VeracityBadge type={veracity} />
-      <span className="truncate text-gray-700 group-hover:text-gray-900">
-        {citation.label}
-      </span>
+      {content}
     </button>
   );
 }

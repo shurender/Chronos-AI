@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import statistics
 
+from fastapi import HTTPException
+
 from backend import config
+from backend.LLM.providers.base import LLMProviderError
 from backend.logging_config import get_logger
 
 from .avatar_schema import (
@@ -81,8 +84,13 @@ def _build_citations(mem_items: list, evidence: list) -> list[AvatarCitation]:
         citations.append(
             AvatarCitation(
                 nodeId=m.get("chunk_id", "unknown"),
-                label=(snippet[:80] or m.get("chunk_id", "memory")),
+                label=(m.get("source_name") or snippet[:80] or m.get("chunk_id", "memory")),
                 excerpt=snippet or None,
+                url=m.get("source_url"),
+                source_type=m.get("source_type"),
+                source_name=m.get("source_name"),
+                source_url=m.get("source_url"),
+                timestamp=m.get("timestamp"),
             )
         )
     for e in evidence:
@@ -92,6 +100,10 @@ def _build_citations(mem_items: list, evidence: list) -> list[AvatarCitation]:
                 label=e.title[:80],
                 excerpt=e.summary,
                 url=e.source_url,
+                source_type=e.source_kind,
+                source_name=e.source_name,
+                source_url=e.source_url,
+                timestamp=e.published_at or e.retrieved_at,
             )
         )
     return citations
@@ -114,6 +126,7 @@ def _build_prompt(request: AvatarChatRequest, mem_items: list, evidence: list, l
         f"timeline ({_timeline_phrase(request)}). Answer in the first person.\n\n"
         "Rules:\n"
         "- When you describe a simulated outcome, begin that claim with 'The simulation suggests...'.\n"
+        "- If no memory graph grounding is available, say exactly: 'I do not have enough personal/workspace history yet.'\n"
         "- When you reason without grounding, begin with 'General reasoning...' and say confidence is low.\n"
         "- Cite grounding items inline by their id (e.g. [memory:...] or [evidence:...]) when you use them.\n"
         "- Never invent market facts that are not in the grounding block.\n"
@@ -126,22 +139,47 @@ def _build_prompt(request: AvatarChatRequest, mem_items: list, evidence: list, l
 
 
 def _llm_answer(request: AvatarChatRequest, mem_items: list, evidence: list, label: GroundingLabel):
-    """Return LLM text, or None if the provider is unavailable/failed (caller
-    then uses the deterministic fallback)."""
+    """Return (LLM text, fallback reason)."""
     try:
         from backend.LLM.llm_service import chat as llm_chat
 
         prompt = _build_prompt(request, mem_items, evidence, label)
         content = llm_chat(prompt, temperature=0.3)
         if isinstance(content, str) and content.strip():
-            return content.strip()
-        return None
-    except Exception:
+            return content.strip(), None
+        return None, "Configured LLM returned an empty response."
+    except LLMProviderError as exc:
         logger.warning(
-            "Configured LLM provider %s unavailable; using deterministic avatar fallback.",
+            "Configured LLM provider %s unavailable; using deterministic avatar fallback: %s",
             config.LLM_PROVIDER,
+            exc,
         )
-        return None
+        if config.REQUIRE_LIVE_LLM:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "Configured live LLM provider failed.",
+                    "provider": config.LLM_PROVIDER,
+                    "fallbackAllowed": False,
+                },
+            ) from exc
+        return None, f"Configured LLM provider '{config.LLM_PROVIDER}' failed; deterministic fallback used."
+    except Exception as exc:
+        logger.warning(
+            "Configured LLM provider %s unavailable; using deterministic avatar fallback: %s",
+            config.LLM_PROVIDER,
+            exc,
+        )
+        if config.REQUIRE_LIVE_LLM:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "Configured live LLM provider failed.",
+                    "provider": config.LLM_PROVIDER,
+                    "fallbackAllowed": False,
+                },
+            ) from exc
+        return None, f"Configured LLM provider '{config.LLM_PROVIDER}' failed; deterministic fallback used."
 
 
 def _fallback_answer(request: AvatarChatRequest, mem_items: list, evidence: list, label: GroundingLabel) -> str:
@@ -151,9 +189,15 @@ def _fallback_answer(request: AvatarChatRequest, mem_items: list, evidence: list
         "grounded fallback from your Future Self.)_\n\n"
     )
 
+    if not mem_items:
+        prefix = "I do not have enough personal/workspace history yet. "
+    else:
+        prefix = ""
+
     if label == "general_opinion":
         return (
             header
+            + prefix
             + f"General reasoning: within {_timeline_phrase(request)}, I don't have simulation "
             f"grounding or evidence specific to \"{request.message}\" yet, so treat this as **low "
             "confidence**. Based on general startup/decision heuristics, weigh reversibility and "
@@ -161,6 +205,8 @@ def _fallback_answer(request: AvatarChatRequest, mem_items: list, evidence: list
         )
 
     parts: list[str] = [header]
+    if prefix:
+        parts.append(prefix.strip())
     parts.append(
         f"The simulation suggests, within {_timeline_phrase(request)}, that your question "
         f"\"{request.message}\" connects to grounding already in your Chronos context:"
@@ -190,7 +236,7 @@ def generate_avatar_reply(request: AvatarChatRequest) -> AvatarChatResponse:
     citations = _build_citations(mem_items, evidence)
     confidence = round(_confidence(label, mem_items, evidence), 3)
 
-    content = _llm_answer(request, mem_items, evidence, label)
+    content, fallback_reason = _llm_answer(request, mem_items, evidence, label)
     llm_backed = content is not None
     if not content:
         content = _fallback_answer(request, mem_items, evidence, label)
@@ -217,6 +263,30 @@ def generate_avatar_reply(request: AvatarChatRequest) -> AvatarChatResponse:
                 created_by="avatar",
                 source_ids=[m.get("chunk_id") for m in mem_items if m.get("chunk_id")],
                 evidence_ids=[e.id for e in evidence],
+                source_links=[
+                    *[
+                        {
+                            "source_id": m.get("chunk_id"),
+                            "source_type": m.get("source_type"),
+                            "source_name": m.get("source_name"),
+                            "source_url": m.get("source_url"),
+                            "timestamp": m.get("timestamp"),
+                            "excerpt": m.get("snippet"),
+                        }
+                        for m in mem_items
+                    ],
+                    *[
+                        {
+                            "source_id": e.id,
+                            "source_type": e.source_kind,
+                            "source_name": e.source_name,
+                            "source_url": e.source_url,
+                            "timestamp": e.published_at or e.retrieved_at,
+                            "excerpt": e.summary,
+                        }
+                        for e in evidence
+                    ],
+                ],
                 graph_node_ids=list(request.graphNodeIds or []),
                 confidence=confidence,
                 uncertainty_reason=uncertainty,
@@ -233,5 +303,7 @@ def generate_avatar_reply(request: AvatarChatRequest) -> AvatarChatResponse:
         groundingLabel=label,
         confidence=confidence,
         llmBacked=llm_backed,
+        llmProvider=config.LLM_PROVIDER,
+        fallbackReason=fallback_reason,
         claim_id=claim_id,
     )

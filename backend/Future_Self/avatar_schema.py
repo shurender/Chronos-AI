@@ -25,6 +25,10 @@ class AvatarCitation(BaseModel):
     label: str
     excerpt: Optional[str] = None
     url: Optional[str] = None
+    source_type: Optional[str] = None
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    timestamp: Optional[str] = None
 
 
 class AvatarChatRequest(BaseModel):
@@ -43,5 +47,7 @@ class AvatarChatResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     # True when a real LLM produced the text; False for the deterministic fallback.
     llmBacked: bool = False
+    llmProvider: Optional[str] = None
+    fallbackReason: Optional[str] = None
     # Provenance claim id for this answer (resolve via GET /provenance/claim/{id}).
     claim_id: Optional[str] = None
