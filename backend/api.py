@@ -21,9 +21,12 @@ from .Memory_Vault.memory_vault_router import router as memory_vault_router
 from .Provenance.provenance_router import router as provenance_router
 from .Safety.safety_router import data_router, router as safety_router
 from .Simulation.simulation_router import router as simulations_router
+from .Connectors.connector_router import router as connectors_router
 from .Decision_Graph.query_layer import (
     find_similar_past_decisions_clean,
+    focused_graph,
     get_full_graph,
+    graph_summary,
     what_did_x_lead_to,
     why_did_x_fail,
 )
@@ -41,10 +44,16 @@ app.add_middleware(
 )
 
 logger.info(
-    "Starting Decision Graph API (demo_mode=%s, llm_provider=%s, evidence_provider=%s, cors_origins=%s)",
+    (
+        "Starting Decision Graph API "
+        "(demo_mode=%s, llm_provider=%s, fireworks_key_present=%s, "
+        "evidence_provider=%s, tavily_key_present=%s, cors_origins=%s)"
+    ),
     config.DEMO_MODE,
     config.LLM_PROVIDER,
+    bool(config.FIREWORKS_API_KEY),
     config.EVIDENCE_PROVIDER,
+    bool(config.TAVILY_API_KEY),
     config.CORS_ORIGINS,
 )
 
@@ -79,10 +88,21 @@ app.include_router(provenance_router)
 app.include_router(simulations_router)
 app.include_router(safety_router)
 app.include_router(data_router)
+app.include_router(connectors_router)
 
 @app.get("/graph")
 def graph():
     return get_full_graph()
+
+
+@app.get("/graph/summary")
+def graph_summary_endpoint():
+    return graph_summary()
+
+
+@app.get("/graph/focus")
+def graph_focus(query: str | None = None, node_id: str | None = None, depth: int = 1, limit: int = 50):
+    return focused_graph(query=query, node_id=node_id, depth=depth, limit=limit)
 
 @app.get("/query/similar")
 def similar(q: str, k: int = 5):
@@ -174,3 +194,9 @@ def health_ready():
 def health_dependencies():
     """Detailed dependency report: graph, evidence provider, LLM provider, storage."""
     return _dependency_report()
+
+
+@app.get("/debug/config")
+def debug_config():
+    """Safe provider/config diagnostics. Never returns secret values."""
+    return config.safe_debug_config()

@@ -1,10 +1,15 @@
-import { apiFetch } from './client';
+import { API_BASE_URL, apiFetch } from './client';
 import type {
   AvatarChatRequest,
   AvatarChatResponse,
   DigitalTwinBuildRequest,
   DigitalTwinProfile,
   EvidenceSearchResponse,
+  ConnectorSource,
+  ConnectorSyncOptions,
+  ConnectorProvider,
+  ConnectorStatus,
+  ConnectorSyncResponse,
   GraphPayload,
   GraphResponse,
   HealthResponse,
@@ -20,6 +25,7 @@ import type {
   EdgeType,
   GraphEdge as FrontendGraphEdge,
   GraphPayload as FrontendGraphPayload,
+  GraphSummary,
   GraphSource,
   NodeType,
   VeracityType,
@@ -84,6 +90,10 @@ export function adaptBackendGraphToFrontendGraph(
         hasGap: Boolean(node.hasGap ?? node.has_gap),
         hasContradiction: Boolean(node.hasContradiction ?? node.has_contradiction),
         summaryText: asString(node.description ?? node.summaryText),
+        sourceType: asString(node.source_type ?? node.sourceType, 'unknown'),
+        sourceAuth: asString(node.source_auth ?? node.sourceAuth),
+        sourceLive: Boolean(node.source_live ?? node.sourceLive),
+        raw: node,
       };
     }),
     edges: graph.edges.map((edge, index): FrontendGraphEdge => {
@@ -106,6 +116,16 @@ export const chronosApi = {
   health: () => apiFetch<HealthResponse>('/health'),
   ready: () => apiFetch<{ ready: boolean }>('/health/ready'),
   getGraph: () => apiFetch<GraphResponse>('/graph'),
+  getGraphSummary: () => apiFetch<GraphSummary>('/graph/summary'),
+  focusGraph: (params: { query?: string; nodeId?: string; depth?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.query) query.set('query', params.query);
+    if (params.nodeId) query.set('node_id', params.nodeId);
+    if (params.depth !== undefined) query.set('depth', String(params.depth));
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    const suffix = query.toString();
+    return apiFetch<GraphResponse>(`/graph/focus${suffix ? `?${suffix}` : ''}`);
+  },
   ingestDemo: () => apiFetch<IngestionRun>('/ingest/demo', { method: 'POST' }),
   ingestGithub: (request: IngestGithubRequest) =>
     apiFetch<IngestionRun>('/ingest/github', {
@@ -122,6 +142,24 @@ export const chronosApi = {
       body: formData,
     });
   },
+  getConnectors: () => apiFetch<ConnectorStatus[]>('/connectors/status'),
+  getConnectorStartUrl: (provider: ConnectorProvider) => `${API_BASE_URL}/connectors/${provider}/start`,
+  getConnectorSources: (provider: ConnectorProvider) =>
+    apiFetch<ConnectorSource[]>(`/connectors/${provider}/sources`),
+  getSelectedConnectorSources: (provider: ConnectorProvider) =>
+    apiFetch<{ sourceIds: string[] }>(`/connectors/${provider}/sources/selected`),
+  selectConnectorSources: (provider: ConnectorProvider, sourceIds: string[]) =>
+    apiFetch<{ sourceIds: string[] }>(`/connectors/${provider}/sources/select`, {
+      method: 'POST',
+      body: JSON.stringify({ sourceIds }),
+    }),
+  syncConnector: (provider: ConnectorProvider, payload?: ConnectorSyncOptions) =>
+    apiFetch<ConnectorSyncResponse>(`/connectors/${provider}/sync`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    }),
+  disconnectConnector: (provider: ConnectorProvider) =>
+    apiFetch<ConnectorStatus>(`/connectors/${provider}/disconnect`, { method: 'POST' }),
   analyzeIntake: (request: IntakeAnalyzeRequest) =>
     apiFetch<IntakeAnalysis>('/intake/analyze', {
       method: 'POST',

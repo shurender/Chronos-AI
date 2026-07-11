@@ -25,6 +25,8 @@ export type NodeType =
   | 'skill'
   | 'project';
 
+export type SourceType = 'github' | 'slack' | 'notion' | 'pdf' | 'demo' | 'upload' | 'unknown';
+
 /**
  * Semantic category of a directed graph edge.
  * Determines edge styling, arrowheads, and layout algorithms.
@@ -62,6 +64,14 @@ export interface Citation {
 
   /** Optional URI to the primary source document. */
   readonly url?: string;
+
+  readonly source_type?: string;
+
+  readonly source_name?: string;
+
+  readonly source_url?: string;
+
+  readonly timestamp?: string;
 }
 
 /**
@@ -114,6 +124,14 @@ export interface GraphNode {
 
   /** Optional expanded narrative shown in detail panels. */
   readonly summaryText?: string;
+
+  readonly sourceType?: SourceType | string;
+
+  readonly sourceAuth?: string;
+
+  readonly sourceLive?: boolean;
+
+  readonly raw?: Record<string, unknown>;
 }
 
 /**
@@ -162,4 +180,21 @@ export interface GraphPayload {
   readonly edges: readonly GraphEdge[];
 
   readonly metadata: GraphMetadata;
+}
+
+export interface GraphSummary {
+  nodeCountsByType: Record<string, number>;
+  edgeCountsByType: Record<string, number>;
+  topProjects: Array<{ label: string; count: number }>;
+  topDecisions: Array<{ id: string; label: string; confidence: number; degree: number; source_type?: string }>;
+  topOutcomes: Array<{ id: string; label: string; confidence: number; degree: number; source_type?: string }>;
+  topPeople: Array<{ id: string; label: string; confidence: number; degree: number; source_type?: string }>;
+  recentSources: Array<{ id: string; label: string; timestamp?: string; source_type?: string }>;
+  mostConnectedNodes: Array<{ id: string; label: string; type: string; degree: number; confidence: number }>;
+  graphHealth: {
+    totalNodes: number;
+    totalEdges: number;
+    orphanNodes: number;
+    averageDegree: number;
+  };
 }

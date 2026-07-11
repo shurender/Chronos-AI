@@ -164,6 +164,7 @@ def tag_fact_inference_prediction(state: ExtractionState) -> ExtractionState:
         tag = find_tag(e["label"]) or find_tag(e["description"])
         evidence_type = tag.evidence_type if tag else "inference"
         confidence = tag.confidence if tag else 0.5
+        chunk_meta = chunk.get("metadata", {})
         node = GraphNode(
             node_type=e["node_type"],
             label=e["label"],
@@ -171,6 +172,15 @@ def tag_fact_inference_prediction(state: ExtractionState) -> ExtractionState:
             source_chunk_ids=[chunk["chunk_id"]],
             evidence_type=evidence_type,
             confidence=confidence,
+            source_type=chunk_meta.get("connector_provider") or chunk.get("source_type"),
+            source_auth=chunk_meta.get("source_auth"),
+            source_live=bool(chunk_meta.get("source_live", False)),
+            source_name=chunk_meta.get("source_name"),
+            source_url=chunk_meta.get("source_url"),
+            external_id=chunk_meta.get("external_id"),
+            content_hash=chunk_meta.get("content_hash"),
+            connector_provider=chunk_meta.get("connector_provider"),
+            connector_source_id=chunk_meta.get("connector_source_id"),
         )
         tagged_nodes.append(node)
         label_to_node_id[e["label"]] = node.node_id

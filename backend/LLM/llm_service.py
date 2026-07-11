@@ -165,13 +165,19 @@ def chat(messages: Messages, temperature: float = 0.0, response_schema: Optional
     provider_name = (config.LLM_PROVIDER or "groq").strip().lower()
     try:
         return get_chat_provider().chat(messages, temperature=temperature, response_schema=response_schema)
-    except LLMProviderError:
+    except LLMProviderError as exc:
         if provider_name == "fireworks":
+            if config.REQUIRE_LIVE_LLM:
+                logger.error("Fireworks provider failed and REQUIRE_LIVE_LLM=true: %s", exc)
+                raise
             if config.GROQ_API_KEY:
-                logger.warning("Fireworks provider failed; falling back to Groq.")
+                logger.warning("Fireworks provider failed; falling back to Groq: %s", exc)
                 return _make_chat_provider("groq").chat(
                     messages, temperature=temperature, response_schema=response_schema
                 )
+            if response_schema is None:
+                logger.warning("Fireworks provider failed; deterministic caller fallback required: %s", exc)
+                raise
             logger.warning("Fireworks provider failed; falling back to deterministic mock.")
             return _make_chat_provider("mock").chat(
                 messages, temperature=temperature, response_schema=response_schema

@@ -7,6 +7,7 @@ import { VeracityBadge } from '../ui/VeracityBadge';
 /** Payload attached to each React Flow node instance. */
 export interface GraphNodeCardData {
   readonly graphNode: GraphNode;
+  readonly highlighted?: boolean;
 }
 
 const NODE_TYPE_LABEL: Record<NodeType, string> = {
@@ -40,6 +41,7 @@ export function GraphNodeCard({ data }: NodeProps<GraphNodeCardData>) {
         'flex h-[100px] w-[250px] flex-col justify-between rounded-lg bg-white p-3 shadow-sm',
         'border-l-4',
         NODE_TYPE_ACCENT[graphNode.type],
+        data.highlighted ? 'ring-2 ring-indigo-400' : '',
         borderClass,
       ].join(' ')}
     >
@@ -64,6 +66,14 @@ export function GraphNodeCard({ data }: NodeProps<GraphNodeCardData>) {
 
       <div className="flex flex-wrap items-center gap-1">
         <VeracityBadge type={graphNode.veracity} />
+        {graphNode.sourceType && (
+          <span className={[
+            'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase',
+            graphNode.sourceLive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500',
+          ].join(' ')}>
+            {graphNode.sourceType}
+          </span>
+        )}
         {graphNode.hasGap && <GapWarningBadge />}
       </div>
 

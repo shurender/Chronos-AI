@@ -15,6 +15,7 @@ import json
 import os
 import threading
 import uuid
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -24,11 +25,18 @@ from fastapi import UploadFile
 from backend.Decision_Graph.extraction_pipeline import build_pipeline, run_pipeline_on_chunk
 from backend.ingestion_pipeline.parsers.github_parser import parse_github_commits, parse_github_issues
 from backend.ingestion_pipeline.parsers.notion_parser import parse_notion_markdown
-from backend.ingestion_pipeline.parsers.pdf_parser import parse_pdf_resume
+from backend.ingestion_pipeline.parsers.pdf_parser import PdfParserError, parse_pdf_resume
 from backend.ingestion_pipeline.parsers.slack_parser import parse_slack_export
 from backend.llm import embed_text
 from backend.logging_config import get_logger
-from backend.storage import G, add_chunk_to_chroma, reset_all as _storage_reset_all, save_graph
+from backend.storage import (
+    G,
+    add_chunk_to_chroma,
+    get_chunk_metadata,
+    remove_graph_records_for_chunk,
+    reset_all as _storage_reset_all,
+    save_graph,
+)
 
 from .ingestion_schema import IngestGithubRequest, IngestionRun
 
@@ -86,6 +94,31 @@ def get_run(run_id: str) -> dict | None:
 def _run_extraction(run: IngestionRun, chunks: list[dict]) -> None:
     """Feeds chunks through the extraction pipeline, mutating `run` in place with
     counts/warnings/errors. Never raises — a bad chunk is recorded, not fatal."""
+    deduped_chunks: list[dict] = []
+    dedupe_counts = {"fetched": len(chunks), "new": 0, "updated": 0, "skipped_duplicate": 0, "failed": 0}
+    for chunk in chunks:
+        text = chunk.get("raw_text", "")
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        meta = chunk.setdefault("metadata", {})
+        meta["content_hash"] = content_hash
+        meta.setdefault("connector_provider", meta.get("connector_provider") or chunk.get("source_type"))
+        meta.setdefault("connector_source_id", meta.get("connector_source_id") or chunk.get("project") or chunk.get("source_id"))
+        meta.setdefault("external_id", meta.get("external_id") or chunk.get("source_id"))
+        meta.setdefault("source_name", meta.get("source_name") or chunk.get("project") or chunk.get("source_id") or chunk["chunk_id"])
+        meta.setdefault("source_url", meta.get("source_url") or meta.get("url") or chunk.get("source_url"))
+        existing = get_chunk_metadata(chunk["chunk_id"])
+        if existing and existing.get("content_hash") == content_hash:
+            dedupe_counts["skipped_duplicate"] += 1
+            continue
+        if existing:
+            remove_graph_records_for_chunk(chunk["chunk_id"])
+            dedupe_counts["updated"] += 1
+        else:
+            dedupe_counts["new"] += 1
+        deduped_chunks.append(chunk)
+
+    run.source_summary = {**run.source_summary, **dedupe_counts}
+    chunks = deduped_chunks
     run.chunks_created = len(chunks)
     if not chunks:
         run.warnings.append("No chunks were produced from the given source(s).")
@@ -119,7 +152,15 @@ def _run_extraction(run: IngestionRun, chunks: list[dict]) -> None:
                 SourceRecord(
                     source_id=chunk["chunk_id"],
                     source_type=chunk.get("source_type", "unknown"),
-                    source_name=chunk.get("source_id") or chunk.get("project") or chunk["chunk_id"],
+                    source_name=chunk.get("metadata", {}).get("source_name")
+                    or chunk.get("source_id")
+                    or chunk.get("project")
+                    or chunk["chunk_id"],
+                    uri=chunk.get("metadata", {}).get("source_url"),
+                    source_url=chunk.get("metadata", {}).get("source_url"),
+                    connector_provider=chunk.get("metadata", {}).get("connector_provider"),
+                    external_id=chunk.get("metadata", {}).get("external_id"),
+                    content_hash=chunk.get("metadata", {}).get("content_hash"),
                     author=chunk.get("author"),
                     timestamp=chunk.get("timestamp"),
                     project=chunk.get("project"),
@@ -135,10 +176,19 @@ def _run_extraction(run: IngestionRun, chunks: list[dict]) -> None:
                 chunk_id=chunk["chunk_id"],
                 text=chunk["raw_text"],
                 metadata={
-                    "source_type": chunk.get("source_type"),
+                    "source_type": chunk.get("metadata", {}).get("connector_provider") or chunk.get("source_type"),
                     "author": chunk.get("author"),
                     "timestamp": chunk.get("timestamp"),
                     "project": chunk.get("project"),
+                    "source_id": chunk.get("source_id"),
+                    "source_name": chunk.get("metadata", {}).get("source_name"),
+                    "source_url": chunk.get("metadata", {}).get("source_url"),
+                    "external_id": chunk.get("metadata", {}).get("external_id"),
+                    "connector_provider": chunk.get("metadata", {}).get("connector_provider"),
+                    "connector_source_id": chunk.get("metadata", {}).get("connector_source_id"),
+                    "source_auth": chunk.get("metadata", {}).get("source_auth"),
+                    "source_live": bool(chunk.get("metadata", {}).get("source_live", False)),
+                    "content_hash": chunk.get("metadata", {}).get("content_hash"),
                     "pii_redacted": bool(chunk.get("metadata", {}).get("pii_redacted", False)),
                 },
                 embedding=embed_text(chunk["raw_text"]),
@@ -162,7 +212,9 @@ def _finalize(run: IngestionRun) -> IngestionRun:
     # Only a total wipeout (every chunk errored, nothing written) counts as
     # "failed" — partial success still surfaces its errors/warnings but the run
     # as a whole succeeded, matching "reliability > complexity".
-    if run.errors and run.nodes_created == 0 and run.edges_created == 0 and run.chunks_created > 0:
+    if run.source_type == "upload" and run.chunks_created == 0 and run.nodes_created == 0 and run.edges_created == 0:
+        run.status = "failed"
+    elif run.errors and run.nodes_created == 0 and run.edges_created == 0 and run.chunks_created > 0:
         run.status = "failed"
     else:
         run.status = "succeeded"
@@ -225,6 +277,10 @@ def ingest_demo() -> IngestionRun:
         return _fail(run, f"Failed to parse demo sources: {exc}")
 
     run.source_summary = summary
+    for chunk in chunks:
+        meta = chunk.setdefault("metadata", {})
+        meta["source_auth"] = "demo"
+        meta["source_live"] = False
     _run_extraction(run, chunks)
     return _finalize(run)
 
@@ -321,7 +377,7 @@ def _map_real_issues(raw_issues: list[dict]) -> list[dict]:
     return mapped
 
 
-def ingest_github(request: IngestGithubRequest) -> IngestionRun:
+def ingest_github(request: IngestGithubRequest, *, authenticated: bool = False) -> IngestionRun:
     run = IngestionRun(source_type="github", status="running")
     _persist(run)
 
@@ -334,6 +390,11 @@ def ingest_github(request: IngestGithubRequest) -> IngestionRun:
     repo_label = f"{owner}/{name}"
     commit_chunks = parse_github_commits(_map_real_commits(raw_commits), repo_label)
     issue_chunks = parse_github_issues(_map_real_issues(raw_issues), repo_label) if raw_issues else []
+    for chunk in commit_chunks + issue_chunks:
+        meta = chunk.setdefault("metadata", {})
+        meta["connector_provider"] = "github"
+        meta["source_auth"] = "authenticated" if authenticated or os.getenv("GITHUB_TOKEN") else "public"
+        meta["source_live"] = True
 
     run.source_summary = {
         "repo": repo_label,
@@ -341,6 +402,24 @@ def ingest_github(request: IngestGithubRequest) -> IngestionRun:
         "issues_fetched": len(raw_issues),
     }
     _run_extraction(run, commit_chunks + issue_chunks)
+    return _finalize(run)
+
+
+def ingest_connector_chunks(
+    source_type: str,
+    chunks: list[dict],
+    source_summary: dict | None = None,
+) -> IngestionRun:
+    """Ingest already-fetched live connector chunks through the shared pipeline."""
+    run = IngestionRun(source_type=source_type, status="running")
+    _persist(run)
+    run.source_summary = source_summary or {}
+    for chunk in chunks:
+        meta = chunk.setdefault("metadata", {})
+        meta.setdefault("connector_provider", source_type)
+        meta.setdefault("source_auth", "authenticated")
+        meta.setdefault("source_live", True)
+    _run_extraction(run, chunks)
     return _finalize(run)
 
 
@@ -355,23 +434,50 @@ def ingest_upload(files: list[UploadFile]) -> IngestionRun:
 
     chunks: list[dict] = []
     filenames: list[str] = []
+    parsed_files: list[str] = []
+    failed_files: list[str] = []
 
     try:
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         for f in files:
             original_name = Path(f.filename or "upload").name  # strip any path components
+            run.files_received += 1
             safe_name = f"{uuid.uuid4().hex[:8]}_{original_name}"
             dest = UPLOAD_DIR / safe_name
             dest.write_bytes(f.file.read())
             filenames.append(original_name)
 
             suffix = dest.suffix.lower()
+            before = len(chunks)
             if suffix == ".pdf":
-                chunks.extend(parse_pdf_resume(str(dest), author="Uploaded User"))
+                try:
+                    chunks.extend(parse_pdf_resume(str(dest), author="Uploaded User", warnings=run.warnings))
+                except PdfParserError as exc:
+                    failed_files.append(original_name)
+                    run.files_failed += 1
+                    run.errors.append(f"{original_name}: {exc}")
+                    continue
             elif suffix in (".md", ".markdown"):
                 chunks.extend(
                     parse_notion_markdown(dest.read_text(encoding="utf-8"), str(dest), dest.stem)
                 )
+            elif suffix == ".txt":
+                text = dest.read_text(encoding="utf-8", errors="replace").strip()
+                if text:
+                    chunks.append(
+                        {
+                            "chunk_id": str(uuid.uuid4()),
+                            "source_type": "uploaded_file",
+                            "source_id": original_name,
+                            "raw_text": text[:5000],
+                            "author": None,
+                            "timestamp": None,
+                            "project": "uploaded",
+                            "metadata": {"original_filename": original_name},
+                        }
+                    )
+                else:
+                    run.warnings.append(f"{original_name}: uploaded text file is empty.")
             elif suffix == ".json":
                 data = json.loads(dest.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and ("commits" in data or "issues" in data):
@@ -391,11 +497,38 @@ def ingest_upload(files: list[UploadFile]) -> IngestionRun:
                         }
                     )
             else:
-                run.warnings.append(f"Unsupported file type skipped: {original_name}")
+                failed_files.append(original_name)
+                run.files_failed += 1
+                run.errors.append(
+                    f"Unsupported file type skipped: {original_name}. Supported upload types: .pdf, .txt, .md, .markdown, .json."
+                )
+                continue
+
+            if len(chunks) > before:
+                parsed_files.append(original_name)
+                run.files_parsed += 1
+            else:
+                failed_files.append(original_name)
+                run.files_failed += 1
     except Exception as exc:
         return _fail(run, f"Failed to process uploaded file(s): {exc}")
 
-    run.source_summary = {"files": filenames}
+    run.source_summary = {
+        "files": filenames,
+        "files_received": run.files_received,
+        "files_parsed": parsed_files,
+        "files_failed": failed_files,
+    }
+    if not chunks:
+        if not run.errors and not run.warnings:
+            run.errors.append("Uploaded file(s) produced no readable text chunks.")
+        return _finalize(run)
+
+    for chunk in chunks:
+        meta = chunk.setdefault("metadata", {})
+        meta["connector_provider"] = "upload"
+        meta["source_auth"] = "uploaded"
+        meta["source_live"] = False
     _run_extraction(run, chunks)
     return _finalize(run)
 

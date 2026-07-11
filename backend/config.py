@@ -11,9 +11,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parent
+
+# Load the repo-root .env explicitly so config is stable whether uvicorn is
+# launched from the repo root, backend/, Docker, or a test runner.
+load_dotenv(REPO_ROOT / ".env", override=False)
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -40,10 +44,11 @@ GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY") or None
 # falls back). "mock" is a deterministic offline provider.
 LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+REQUIRE_LIVE_LLM: bool = _bool_env("REQUIRE_LIVE_LLM", False)
 
 # Fireworks (OpenAI-compatible) — optional.
 FIREWORKS_API_KEY: str | None = os.getenv("FIREWORKS_API_KEY") or None
-FIREWORKS_MODEL: str = os.getenv("FIREWORKS_MODEL", "accounts/fireworks/models/llama-v3p1-70b-instruct")
+FIREWORKS_MODEL: str = os.getenv("FIREWORKS_MODEL", "accounts/fireworks/models/gpt-oss-120b")
 
 # Local OpenAI-compatible endpoints (Ollama / vLLM). vLLM is the AMD/ROCm path.
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -71,6 +76,36 @@ EVIDENCE_PROVIDER: str = os.getenv("EVIDENCE_PROVIDER", "demo")
 TAVILY_API_KEY: str | None = os.getenv("TAVILY_API_KEY") or None
 SERPAPI_API_KEY: str | None = os.getenv("SERPAPI_API_KEY") or None
 
+# Authenticated data connectors. Secrets are read from env only and are never
+# returned by diagnostics.
+GITHUB_CLIENT_ID: str | None = os.getenv("GITHUB_CLIENT_ID") or None
+GITHUB_CLIENT_SECRET: str | None = os.getenv("GITHUB_CLIENT_SECRET") or None
+GITHUB_REDIRECT_URI: str = os.getenv(
+    "GITHUB_REDIRECT_URI", "http://localhost:8000/connectors/github/callback"
+)
+GITHUB_TOKEN: str | None = os.getenv("GITHUB_TOKEN") or None
+
+SLACK_CLIENT_ID: str | None = os.getenv("SLACK_CLIENT_ID") or None
+SLACK_CLIENT_SECRET: str | None = os.getenv("SLACK_CLIENT_SECRET") or None
+SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET") or None
+SLACK_REDIRECT_URI: str = os.getenv(
+    "SLACK_REDIRECT_URI", "http://localhost:8000/connectors/slack/callback"
+)
+
+NOTION_CLIENT_ID: str | None = os.getenv("NOTION_CLIENT_ID") or None
+NOTION_CLIENT_SECRET: str | None = os.getenv("NOTION_CLIENT_SECRET") or None
+NOTION_REDIRECT_URI: str = os.getenv(
+    "NOTION_REDIRECT_URI", "http://localhost:8000/connectors/notion/callback"
+)
+NOTION_VERSION: str = os.getenv("NOTION_VERSION", "2026-03-11")
+NOTION_TOKEN: str | None = os.getenv("NOTION_TOKEN") or None
+
+CONNECTOR_TOKEN_STORE: str = os.getenv("CONNECTOR_TOKEN_STORE", "local")
+CONNECTOR_ENCRYPTION_KEY: str = os.getenv("CONNECTOR_ENCRYPTION_KEY", "dev-only-local-key")
+CONNECTOR_STORE_PATH: str = os.getenv(
+    "CONNECTOR_STORE_PATH", str(BASE_DIR / "Connectors" / "tokens.json")
+)
+
 CHROMA_PATH: str = os.getenv("CHROMA_DB_PATH", str(BASE_DIR / "chroma_db"))
 GRAPH_PATH: str = os.getenv("GRAPH_PATH", str(BASE_DIR / "graph.gpickle"))
 
@@ -82,6 +117,26 @@ CORS_ORIGINS: list[str] = _list_env(
 )
 
 DEMO_MODE: bool = _bool_env("DEMO_MODE", True)
+
+
+def safe_debug_config() -> dict:
+    return {
+        "llmProvider": LLM_PROVIDER,
+        "fireworksKeyPresent": bool(FIREWORKS_API_KEY),
+        "groqKeyPresent": bool(GROQ_API_KEY),
+        "evidenceProvider": EVIDENCE_PROVIDER,
+        "tavilyKeyPresent": bool(TAVILY_API_KEY),
+        "demoMode": DEMO_MODE,
+        "corsOrigins": CORS_ORIGINS,
+        "requireLiveLlm": REQUIRE_LIVE_LLM,
+        "githubClientConfigured": bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET),
+        "githubTokenPresent": bool(GITHUB_TOKEN),
+        "slackClientConfigured": bool(SLACK_CLIENT_ID and SLACK_CLIENT_SECRET),
+        "slackSigningSecretPresent": bool(SLACK_SIGNING_SECRET),
+        "notionClientConfigured": bool(NOTION_CLIENT_ID and NOTION_CLIENT_SECRET),
+        "notionTokenPresent": bool(NOTION_TOKEN),
+        "connectorTokenStore": CONNECTOR_TOKEN_STORE,
+    }
 
 # Safety / privacy.
 # When false (default), ingested raw_text is PII/secret-redacted before storage.

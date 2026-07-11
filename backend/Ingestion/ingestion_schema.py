@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from typing import Literal
 
-IngestionSourceType = Literal["demo", "github", "upload"]
+IngestionSourceType = Literal["demo", "github", "slack", "notion", "upload"]
 IngestionStatus = Literal["pending", "running", "succeeded", "failed"]
 
 
@@ -28,6 +28,9 @@ class IngestionRun(BaseModel):
     chunks_created: int = 0
     nodes_created: int = 0
     edges_created: int = 0
+    files_received: int = 0
+    files_parsed: int = 0
+    files_failed: int = 0
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     source_summary: dict = Field(default_factory=dict)

@@ -208,7 +208,10 @@ python -m backend.main
 Chat generation goes through a provider abstraction (`backend/LLM/`), selected with `LLM_PROVIDER`. Embeddings are selected independently with `EMBEDDING_PROVIDER`. Check the active setup at any time:
 
 ```bash
+python -c "from backend import config; print(config.LLM_PROVIDER, bool(config.FIREWORKS_API_KEY), config.EVIDENCE_PROVIDER, bool(config.TAVILY_API_KEY))"
+curl http://localhost:8000/debug/config
 curl http://localhost:8000/llm/health
+curl "http://localhost:8000/evidence/search?query=AI%20startup%20pivot&k=5"
 ```
 
 **Current default — CPU / Groq mode:**
@@ -263,3 +266,23 @@ python -m backend.evals.run_evals
 Metrics include: `endpoint_success`, `schema_valid`, `timelines_count_valid`, `evidence_grounding_present`, `unsupported_claims_absent` (MarketAgent must not cite outside the evidence snapshot / must refuse when evidence is missing), `missing_context_detected`, `confidence_penalty_applied`, `recommendation_present`, `no_crash`, and (for avatar cases) `grounding_label_valid`.
 
 Add or edit cases in `backend/evals/eval_cases.json` (schema: `backend/evals/eval_schema.py`).
+
+---
+
+## Live mode validation
+
+Use the local live-mode harness when `.env` is configured with Fireworks/Tavily keys and you want to check the real provider path without adding secrets to CI:
+
+```bash
+python -m backend.scripts.live_mode_check --require-live-llm --require-live-evidence
+```
+
+Optional flags:
+- `--require-live-llm` fails if the configured LLM is unavailable or `/avatar/chat` falls back.
+- `--require-live-evidence` fails if Tavily/live evidence is unavailable.
+- `--require-connectors` fails if GitHub/Slack/Notion are not authenticated locally.
+- `--decision "Should I pivot to enterprise?"` changes the sample simulation prompt.
+- `--verbose` prints redacted response details.
+- `--frontend-build` also runs `cd Frontend && npm run build`.
+
+The harness prints a `PASS` / `WARN` / `FAIL` checklist for config loading, `/llm/health`, `/evidence/providers/health`, `/evidence/search`, `/connectors/status`, `/graph/summary`, `/simulate`, and `/avatar/chat`. It never prints API key values and does not require Slack/GitHub/Notion OAuth unless `--require-connectors` is passed.

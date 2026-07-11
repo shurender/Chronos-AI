@@ -28,6 +28,13 @@ function getErrorMessage(status: number, body: unknown): string {
   if (body && typeof body === 'object' && 'detail' in body) {
     const detail = (body as { detail: unknown }).detail;
     if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object') {
+      const parts = [
+        ...(((detail as { errors?: unknown }).errors as string[] | undefined) ?? []),
+        ...(((detail as { warnings?: unknown }).warnings as string[] | undefined) ?? []),
+      ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+      if (parts.length) return parts.join(' ');
+    }
     return JSON.stringify(detail);
   }
   if (typeof body === 'string' && body.trim()) return body;

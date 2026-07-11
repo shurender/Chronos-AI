@@ -280,6 +280,7 @@ def _risk(
     evidence: list[EvidenceItem],
     twin: DigitalTwinProfile | None = None,
     intake_missing_fields: list[str] | None = None,
+    data_coverage: dict | None = None,
 ) -> tuple[AgentOutput, float]:
     failure = float(forecast_context.get("failure_share", 0.0))
     top_risks = forecast_context.get("top_risks", []) or []
@@ -295,6 +296,11 @@ def _risk(
         concerns.append(f"Modeled failure share is elevated ({failure:.0f}%).")
     for field in (intake_missing_fields or [])[:4]:
         concerns.append(f"Missing decision context: {field} (Chronos is assuming a default).")
+    if data_coverage:
+        if data_coverage.get("connectorSources", 0) == 0 and data_coverage.get("uploadedSources", 0) == 0:
+            concerns.append("No real connector/uploaded workspace data is grounding this run.")
+        if float(data_coverage.get("overallCoverage", 0.0)) < 0.3:
+            concerns.append("Overall data coverage is low; confidence should stay conservative.")
 
     citations = [p.get("chunk_id") for p in precedents[:2] if p.get("chunk_id")]
     position = (
@@ -326,7 +332,7 @@ def _risk(
             confidence=confidence,
             rationale=[
                 "Downside is estimated from the heuristic forecast, not observed outcomes.",
-                "Missing precedents or evidence widen the true uncertainty band.",
+                "Missing real workspace data, precedents, or evidence widens the true uncertainty band.",
             ],
             citations=citations,
             concerns=concerns,
@@ -342,6 +348,7 @@ def _strategist(
     analysts: list[AgentOutput],
     consensus: float,
     intake_low_completeness: bool = False,
+    data_coverage: dict | None = None,
 ) -> tuple[AgentOutput, float]:
     rec = next((b for b in branches if b.id == recommended_branch_id), branches[0] if branches else None)
 
@@ -377,6 +384,12 @@ def _strategist(
         )
         if intake_low_completeness:
             position += " This recommendation is provisional — key decision context is missing."
+        if data_coverage:
+            coverage = float(data_coverage.get("overallCoverage", 0.0))
+            if coverage >= 0.6:
+                position += " This is comparatively data-backed by workspace history/evidence."
+            elif coverage < 0.3:
+                position += " This is assumption-heavy because Chronos has limited real data."
         confidence = _clip01(0.35 + rec.probabilityScore * 0.4 + consensus * 0.25)
 
     concerns = []
@@ -384,6 +397,8 @@ def _strategist(
         concerns.append("Council is divided; treat the recommendation as provisional.")
     if intake_low_completeness:
         concerns.append("Recommendation rests on assumed context (low intake completeness).")
+    if data_coverage and float(data_coverage.get("overallCoverage", 0.0)) < 0.3:
+        concerns.append("Recommendation is assumption-heavy because real data coverage is low.")
 
     citations = sorted({c for a in analysts for c in a.citations})[:6]
 
@@ -396,6 +411,9 @@ def _strategist(
             rationale=[
                 "Chose the branch with the best probability-vs-regret tradeoff.",
                 f"Council consensus across analyst agents: {consensus:.0%}.",
+                f"Data coverage: {float(data_coverage.get('overallCoverage', 0.0)):.0%}."
+                if data_coverage
+                else "Data coverage was not supplied.",
             ],
             citations=citations,
             concerns=concerns,
@@ -569,6 +587,7 @@ def run_agent_council(
     twin: DigitalTwinProfile | None = None,
     intake_missing_fields: list[str] | None = None,
     intake_low_completeness: bool = False,
+    data_coverage: dict | None = None,
     agent_mode: str = "deterministic",
 ) -> AgentCouncil:
     analysts = [
@@ -576,7 +595,7 @@ def run_agent_council(
         _behavioral(request, precedents, twin),
         _domain(request),
         _market(evidence),
-        _risk(request, forecast_context, precedents, evidence, twin, intake_missing_fields),
+        _risk(request, forecast_context, precedents, evidence, twin, intake_missing_fields, data_coverage),
     ]
 
     consensus = _consensus(analysts)  # kept deterministic/numeric for stability
@@ -588,6 +607,7 @@ def run_agent_council(
         [o for o, _ in analysts],
         consensus,
         intake_low_completeness,
+        data_coverage,
     )
 
     agents = [o for o, _ in analysts] + [strategist_output]

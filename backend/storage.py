@@ -112,6 +112,42 @@ def delete_chunk(chunk_id: str) -> None:
         pass
 
 
+def get_chunk_metadata(chunk_id: str) -> dict | None:
+    try:
+        result = chunk_collection.get(ids=[chunk_id], include=["metadatas"])
+    except Exception:  # noqa: BLE001
+        return None
+    metadatas = result.get("metadatas") or []
+    return metadatas[0] if metadatas else None
+
+
+def remove_graph_records_for_chunk(chunk_id: str) -> tuple[int, int]:
+    """Remove graph nodes/edges derived from a chunk before re-ingesting it."""
+    node_ids = [
+        node_id
+        for node_id, data in G.nodes(data=True)
+        if chunk_id in (data.get("source_chunk_ids") or [])
+    ]
+    edge_keys = [
+        (u, v, key)
+        for u, v, key, data in G.edges(keys=True, data=True)
+        if chunk_id in (data.get("source_chunk_ids") or [])
+    ]
+    for u, v, key in edge_keys:
+        if G.has_edge(u, v, key):
+            G.remove_edge(u, v, key)
+    for node_id in node_ids:
+        if G.has_node(node_id):
+            G.remove_node(node_id)
+    if node_ids:
+        try:
+            node_collection.delete(ids=node_ids)
+        except Exception:  # noqa: BLE001
+            pass
+    delete_chunk(chunk_id)
+    return len(node_ids), len(edge_keys)
+
+
 def reset_all() -> None:
     """Clear the in-memory graph, delete the persisted graph file, and empty both
     Chroma collections IN PLACE (not delete+recreate — other modules hold direct

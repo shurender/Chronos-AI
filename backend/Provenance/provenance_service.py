@@ -68,6 +68,15 @@ def get_source(source_id: str) -> dict | None:
     return json.loads(row[0]) if row else None
 
 
+def get_sources(source_ids: list[str]) -> list[dict]:
+    if not source_ids:
+        return []
+    conn = _connect()
+    placeholders = ",".join("?" for _ in source_ids)
+    rows = conn.execute(f"SELECT data FROM sources WHERE source_id IN ({placeholders})", source_ids).fetchall()
+    return [json.loads(row[0]) for row in rows]
+
+
 def create_claim(record: ClaimRecord) -> ClaimRecord:
     redacted, _ = redact_pii(record.claim_text)
     record.claim_text = redacted
@@ -92,7 +101,23 @@ def create_claim(record: ClaimRecord) -> ClaimRecord:
 def get_claim(claim_id: str) -> dict | None:
     conn = _connect()
     row = conn.execute("SELECT data FROM claims WHERE claim_id = ?", (claim_id,)).fetchone()
-    return json.loads(row[0]) if row else None
+    if not row:
+        return None
+    claim = json.loads(row[0])
+    if not claim.get("source_links"):
+        claim["source_links"] = [
+            {
+                "source_id": source.get("source_id"),
+                "source_type": source.get("source_type"),
+                "source_name": source.get("source_name"),
+                "source_url": source.get("source_url") or source.get("uri"),
+                "timestamp": source.get("timestamp"),
+                "excerpt": source.get("raw_excerpt"),
+                "connector_provider": source.get("connector_provider"),
+            }
+            for source in get_sources(claim.get("source_ids", []))
+        ]
+    return claim
 
 
 def delete_source(source_id: str) -> bool:
