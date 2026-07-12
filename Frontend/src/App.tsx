@@ -36,6 +36,7 @@ function ConnectDataView() {
   const publicGithubExamples = ['fastapi/fastapi', 'vercel/next.js', 'microsoft/vscode'];
   const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
   const startConnector = useChronosStore((state) => state.startConnector);
+  const checkGithubRepo = useChronosStore((state) => state.checkGithubRepo);
   const ingestGithubRepo = useChronosStore((state) => state.ingestGithubRepo);
   const loadConnectorSources = useChronosStore((state) => state.loadConnectorSources);
   const selectConnectorSources = useChronosStore((state) => state.selectConnectorSources);
@@ -45,6 +46,7 @@ function ConnectDataView() {
   const connectorStatuses = useChronosStore((state) => state.connectorStatuses);
   const connectorSources = useChronosStore((state) => state.connectorSources);
   const selectedConnectorSourceIds = useChronosStore((state) => state.selectedConnectorSourceIds);
+  const githubRepoCheck = useChronosStore((state) => state.githubRepoCheck);
   const connectStatus = useChronosStore((state) => state.connectStatus);
   const errorMessage = useChronosStore((state) => state.errorMessage);
   const backendStatus = useChronosStore((state) => state.backendStatus);
@@ -210,13 +212,37 @@ function ConnectDataView() {
                     disabled={isLoading}
                     className="mt-1 w-full rounded-md border border-gray-200 px-2 py-1.5 text-[11px] text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none disabled:opacity-50"
                   />
-                  <button
-                    type="submit"
-                    disabled={isLoading || !manualGithubRepo.trim()}
-                    className="mt-2 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Ingest & continue
-                  </button>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const repo = manualGithubRepo.trim();
+                        if (repo) void checkGithubRepo(repo);
+                      }}
+                      disabled={isLoading || !manualGithubRepo.trim()}
+                      className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Check repo
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isLoading || !manualGithubRepo.trim()}
+                      className="rounded-md border border-gray-900 bg-gray-900 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Ingest & continue
+                    </button>
+                  </div>
+                  {githubRepoCheck && (
+                    <p className={`mt-2 text-[10px] leading-snug ${githubRepoCheck.exists ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {githubRepoCheck.message}
+                      {githubRepoCheck.exists && (
+                        <>
+                          {' '}Branch: {githubRepoCheck.default_branch ?? 'unknown'}
+                          {typeof githubRepoCheck.stars === 'number' ? ` · Stars: ${githubRepoCheck.stars}` : ''}
+                        </>
+                      )}
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-1">
                     {publicGithubExamples.map((repo) => (
                       <button

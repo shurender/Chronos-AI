@@ -9,7 +9,7 @@ returns a non-2xx with a clear error — failures are surfaced, not swallowed.
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from . import ingestion_service as service
-from .ingestion_schema import IngestGithubRequest, IngestionRun, IngestResetResponse
+from .ingestion_schema import GithubRepoCheckResponse, IngestGithubRequest, IngestionRun, IngestResetResponse
 
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
 
@@ -40,6 +40,15 @@ def ingest_demo():
 def ingest_github(request: IngestGithubRequest):
     """Ingest public commits/issues from a GitHub repo (no OAuth; optional GITHUB_TOKEN)."""
     return _respond(service.ingest_github(request))
+
+
+@router.post("/github/check", response_model=GithubRepoCheckResponse)
+def check_github_repo(request: IngestGithubRequest):
+    """Check whether a public GitHub repo exists before ingestion."""
+    try:
+        return service.check_github_repo(request.repo)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/upload", response_model=IngestionRun)

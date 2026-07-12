@@ -314,18 +314,49 @@ def _parse_repo_ref(repo: str) -> tuple[str, str]:
     raise ValueError(f"Invalid repo reference {repo!r}. Use 'owner/repo' or a GitHub URL.")
 
 
-def _fetch_github(owner: str, name: str, include_issues: bool, max_items: int) -> tuple[list[dict], list[dict]]:
-    """Public GitHub REST API — no OAuth required for public repos. Uses GITHUB_TOKEN
-    as a Bearer token if set (raises the unauthenticated 60 req/hr rate limit),
-    but works without one for public repos."""
+def _github_headers() -> dict[str, str]:
     headers = {"Accept": "application/vnd.github+json"}
     token = os.getenv("GITHUB_TOKEN") if config.GITHUB_PUBLIC_INGEST_USE_TOKEN else None
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    return headers
 
+
+def check_github_repo(repo: str) -> dict:
+    owner, name = _parse_repo_ref(repo)
+    repo_label = f"{owner}/{name}"
+    try:
+        with httpx.Client(timeout=10.0, headers=_github_headers()) as client:
+            res = client.get(f"https://api.github.com/repos/{repo_label}")
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"No network access to GitHub API: {exc}") from exc
+
+    if res.status_code == 404:
+        return {"exists": False, "repo": repo_label, "message": f"Repository '{repo_label}' was not found or is not public."}
+    if res.status_code == 403:
+        raise RuntimeError("GitHub API rate limit exceeded or access forbidden. Try again later or use another public repo.")
+    res.raise_for_status()
+    data = res.json()
+    return {
+        "exists": True,
+        "repo": repo_label,
+        "full_name": data.get("full_name") or repo_label,
+        "private": bool(data.get("private")),
+        "html_url": data.get("html_url"),
+        "default_branch": data.get("default_branch"),
+        "updated_at": data.get("updated_at"),
+        "stars": data.get("stargazers_count"),
+        "message": f"Found public repository '{data.get('full_name') or repo_label}'.",
+    }
+
+
+def _fetch_github(owner: str, name: str, include_issues: bool, max_items: int) -> tuple[list[dict], list[dict]]:
+    """Public GitHub REST API — no OAuth required for public repos. Uses GITHUB_TOKEN
+    as a Bearer token if set (raises the unauthenticated 60 req/hr rate limit),
+    but works without one for public repos."""
     base = f"https://api.github.com/repos/{owner}/{name}"
     try:
-        with httpx.Client(timeout=10.0, headers=headers) as client:
+        with httpx.Client(timeout=10.0, headers=_github_headers()) as client:
             commits_res = client.get(f"{base}/commits", params={"per_page": max_items})
     except httpx.RequestError as exc:
         raise RuntimeError(f"No network access to GitHub API: {exc}") from exc
@@ -342,7 +373,7 @@ def _fetch_github(owner: str, name: str, include_issues: bool, max_items: int) -
 
     raw_issues: list[dict] = []
     if include_issues:
-        with httpx.Client(timeout=10.0, headers=headers) as client:
+        with httpx.Client(timeout=10.0, headers=_github_headers()) as client:
             issues_res = client.get(f"{base}/issues", params={"per_page": max_items, "state": "all"})
         issues_res.raise_for_status()
         raw_issues = issues_res.json()
@@ -401,7 +432,7 @@ def ingest_github(request: IngestGithubRequest, *, authenticated: bool = False) 
     for chunk in commit_chunks + issue_chunks:
         meta = chunk.setdefault("metadata", {})
         meta["connector_provider"] = "github"
-        meta["source_auth"] = "authenticated" if authenticated or os.getenv("GITHUB_TOKEN") else "public"
+        meta["source_auth"] = "authenticated" if authenticated or config.GITHUB_PUBLIC_INGEST_USE_TOKEN else "public"
         meta["source_live"] = True
 
     run.source_summary = {

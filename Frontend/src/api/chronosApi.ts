@@ -14,6 +14,7 @@ import type {
   GraphResponse,
   HealthResponse,
   HistoricalPrecedent,
+  GithubRepoCheckResponse,
   IngestGithubRequest,
   IngestionRun,
   IntakeAnalysis,
@@ -127,6 +128,11 @@ export const chronosApi = {
     return apiFetch<GraphResponse>(`/graph/focus${suffix ? `?${suffix}` : ''}`);
   },
   ingestDemo: () => apiFetch<IngestionRun>('/ingest/demo', { method: 'POST' }),
+  checkGithubRepo: (request: IngestGithubRequest) =>
+    apiFetch<GithubRepoCheckResponse>('/ingest/github/check', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
   ingestGithub: (request: IngestGithubRequest) =>
     apiFetch<IngestionRun>('/ingest/github', {
       method: 'POST',

@@ -432,6 +432,18 @@ export interface IngestGithubRequest {
   max_items?: number;
 }
 
+export interface GithubRepoCheckResponse {
+  exists: boolean;
+  repo: string;
+  full_name?: string | null;
+  private?: boolean | null;
+  html_url?: string | null;
+  default_branch?: string | null;
+  updated_at?: string | null;
+  stars?: number | null;
+  message: string;
+}
+
 export interface IngestionRun {
   run_id: string;
   source_type: IngestionSourceType;

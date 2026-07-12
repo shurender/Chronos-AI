@@ -9,6 +9,7 @@ import type {
   ConnectorStatus,
   DigitalTwinProfile,
   EvidenceItem,
+  GithubRepoCheckResponse,
   HistoricalPrecedent,
   IngestionRun,
   IntakeAnalysis,
@@ -51,6 +52,7 @@ export interface ChronosStoreState {
   agentCouncil: AgentCouncil | null;
   selectedTimelineId: string | null;
   lastIngestionRun: IngestionRun | null;
+  githubRepoCheck: GithubRepoCheckResponse | null;
   connectorStatuses: Record<ConnectorProvider, ConnectorStatus>;
   connectorSources: Record<ConnectorProvider, ConnectorSource[]>;
   selectedConnectorSourceIds: Record<ConnectorProvider, string[]>;
@@ -83,6 +85,7 @@ export interface ChronosStoreActions {
   disconnectConnector: (provider: ConnectorProvider) => Promise<void>;
   setSelectedTimelineId: (timelineId: string | null) => void;
   loadDemoWorkspace: () => Promise<void>;
+  checkGithubRepo: (repo: string) => Promise<void>;
   ingestGithubRepo: (repo: string) => Promise<void>;
   uploadFiles: (files: FileList | File[]) => Promise<void>;
   refreshGraph: () => Promise<GraphPayload>;
@@ -214,6 +217,7 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
   agentCouncil: null,
   selectedTimelineId: null,
   lastIngestionRun: null,
+  githubRepoCheck: null,
   connectorStatuses: {
     github: defaultConnectorStatus('github'),
     slack: defaultConnectorStatus('slack'),
@@ -412,17 +416,40 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
     }
   },
 
+  checkGithubRepo: async (repo) => {
+    set({ isLoading: true, connectStatus: `Checking ${repo}...`, errorMessage: null, githubRepoCheck: null });
+    try {
+      const check = await chronosApi.checkGithubRepo({ repo });
+      set({
+        githubRepoCheck: check,
+        connectStatus: check.exists ? check.message : null,
+        errorMessage: check.exists ? null : check.message,
+        backendStatus: 'connected',
+        isLoading: false,
+      });
+    } catch (error) {
+      console.warn('GitHub repo check failed.', error);
+      set({
+        connectStatus: null,
+        errorMessage: getErrorMessage(error, 'Could not verify this GitHub repository.'),
+        isLoading: false,
+      });
+    }
+  },
+
   ingestGithubRepo: async (repo) => {
     set({ isLoading: true, connectStatus: `Ingesting ${repo}...`, errorMessage: null });
     try {
       const run = await chronosApi.ingestGithub({ repo });
       await get().refreshGraph();
+      const hasUsefulOutput = run.chunks_created > 0 || run.nodes_created > 0 || run.edges_created > 0;
       set({
         lastIngestionRun: run,
-        connectStatus: `GitHub repo ingested: ${run.nodes_created} nodes, ${run.edges_created} edges.`,
+        connectStatus: `GitHub repo ingested: ${run.chunks_created} chunks, ${run.nodes_created} nodes, ${run.edges_created} edges.`,
+        errorMessage: hasUsefulOutput ? null : 'Repo was reachable, but no useful commits/issues were ingested. Try another public repo with recent commits or issues.',
         backendStatus: 'connected',
         isLoading: false,
-        currentStep: 2,
+        currentStep: hasUsefulOutput ? 2 : get().currentStep,
       });
     } catch (error) {
       console.warn('GitHub ingestion failed.', error);

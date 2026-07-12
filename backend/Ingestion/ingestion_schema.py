@@ -42,6 +42,18 @@ class IngestGithubRequest(BaseModel):
     max_items: int = Field(default=30, ge=1, le=200)
 
 
+class GithubRepoCheckResponse(BaseModel):
+    exists: bool
+    repo: str
+    full_name: str | None = None
+    private: bool | None = None
+    html_url: str | None = None
+    default_branch: str | None = None
+    updated_at: str | None = None
+    stars: int | None = None
+    message: str
+
+
 class IngestResetResponse(BaseModel):
     reset: bool
     nodes_before: int
