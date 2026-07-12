@@ -273,8 +273,8 @@ export function MemoryGraphView() {
   }
 
   return (
-    <div className="flex h-full w-full bg-white">
-      <aside className="flex w-80 shrink-0 flex-col gap-4 border-r border-gray-200 bg-gray-50 p-4">
+    <div className="flex h-full w-full flex-col bg-white lg:flex-row">
+      <aside className="flex max-h-80 shrink-0 flex-col gap-4 overflow-auto border-b border-gray-200 bg-gray-50 p-4 lg:max-h-none lg:w-80 lg:border-r lg:border-b-0">
         <div>
           <h3 className="text-sm font-bold text-gray-900">Memory Graph</h3>
           <p className="mt-1 text-xs text-gray-500">
@@ -364,7 +364,7 @@ export function MemoryGraphView() {
         </section>
       </aside>
 
-      <div className="relative min-w-0 flex-1">
+      <div className="relative min-h-[28rem] min-w-0 flex-1">
         {displayedPayload && displayedPayload.nodes.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">No graph nodes match the current filters.</div>
         ) : (
@@ -390,7 +390,7 @@ export function MemoryGraphView() {
       </div>
 
       {selectedNode && (
-        <aside className="w-80 shrink-0 border-l border-gray-200 bg-white p-5">
+        <aside className="max-h-80 shrink-0 overflow-auto border-t border-gray-200 bg-white p-5 lg:max-h-none lg:w-80 lg:border-t-0 lg:border-l">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold tracking-wide text-gray-400 uppercase">{selectedNode.type}</p>

@@ -39,7 +39,7 @@ function StepNode({ step, status, clickable, onNavigate }: { step: StepConfig, s
 
   const content = (
     <>
-      <span className={['flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300', circleClassMap[status]].join(' ')}>
+      <span className={['flex size-9 items-center justify-center rounded-full border-2 transition-all duration-300 sm:size-10', circleClassMap[status]].join(' ')}>
         <Icon className="size-4" aria-hidden="true" />
       </span>
       <span className={['mt-2 hidden text-center text-xs tracking-wide sm:block transition-all duration-200', labelClassMap[status]].join(' ')}>
@@ -62,7 +62,7 @@ export function StepProgressBar() {
   const setStep = useChronosStore((state) => state.setStep);
 
   return (
-    <nav className="w-full border-b border-gray-200 bg-white/90 backdrop-blur-md px-6 py-5">
+    <nav className="w-full border-b border-gray-200 bg-white/90 backdrop-blur-md px-3 py-4 sm:px-6 sm:py-5">
       <ol className="mx-auto flex max-w-4xl items-start">
         {STEPS.map((step, index) => {
           const status = getStepStatus(step.id, currentStep);
@@ -70,7 +70,7 @@ export function StepProgressBar() {
             <li key={step.id} className="flex flex-1 items-start last:flex-none">
               <StepNode step={step} status={status} clickable={step.id < currentStep} onNavigate={setStep} />
               {index < STEPS.length - 1 && (
-                <div className="mx-2 h-0.5 flex-1 self-start mt-5">
+                <div className="mx-1 h-0.5 flex-1 self-start mt-4.5 sm:mx-2 sm:mt-5">
                   <div className={['h-full w-full rounded-full transition-all duration-500', step.id < currentStep ? 'bg-gray-900' : 'bg-gray-100'].join(' ')} />
                 </div>
               )}

@@ -25,3 +25,4 @@ backend/Provenance/provenance.db
 backend/Simulation/simulations.db
 backend/Connectors/tokens.json
 backend/Connectors/*.json
+.vercel

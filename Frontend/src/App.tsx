@@ -8,6 +8,8 @@ import { useChronosStore } from './store/useChronosStore';
 import { LandingPage } from './components/layout/LandingPage';
 import type { ConnectorProvider, ConnectorSource, ConnectorStatus } from './api/contracts';
 
+const CHRONOS_LOGO_SRC = '/chronos-logo.svg';
+
 // Custom Minimal SVGs for Logos
 const NotionIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -101,8 +103,8 @@ function ConnectDataView() {
   };
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-xl">
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-6 sm:py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-5 text-center shadow-xl sm:p-10">
         <h1 className="text-3xl font-serif tracking-tight text-gray-900">
           Connect Your Data Sources
         </h1>
@@ -114,7 +116,7 @@ function ConnectDataView() {
           Backend {backendStatus === 'connected' ? 'connected' : backendStatus === 'disconnected' ? 'disconnected' : 'checking...'}
         </p>
 
-        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
           {sources.map(({ provider, icon: Icon, label, sub }) => {
             const status = connectorStatuses[provider];
             const availableSources = connectorSources[provider];
@@ -281,8 +283,8 @@ function DefineDecisionView() {
   const { decisionQuestion, setDecisionQuestion, decisionType, setDecisionType, horizon, setHorizon, risk, setRisk, goal, setGoal, constraints, setConstraints, geography, setGeography, optionA, setOptionA, optionB, setOptionB, optionC, setOptionC, runSimulation, isLoading, errorMessage } = useChronosStore();
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-8 shadow-xl">
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-6 sm:py-12 bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-5 shadow-xl sm:p-8">
         <h1 className="text-3xl font-serif tracking-tight text-gray-900">
           Define Your Decision
         </h1>
@@ -299,7 +301,7 @@ function DefineDecisionView() {
           className="mt-6 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none disabled:opacity-50 transition-all duration-200"
         />
 
-        <div className="mt-6 grid grid-cols-2 gap-4">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className={LABEL_CLASS}>Decision type</label>
             <select value={decisionType} onChange={(e) => setDecisionType(e.target.value as any)} disabled={isLoading} className={FIELD_CLASS}>
@@ -334,12 +336,12 @@ function DefineDecisionView() {
           <input type="text" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="What does success look like?" disabled={isLoading} className={FIELD_CLASS} />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div><label className={LABEL_CLASS}>Constraints</label><input type="text" value={constraints} onChange={(e) => setConstraints(e.target.value)} placeholder="e.g. limited runway" disabled={isLoading} className={FIELD_CLASS} /></div>
           <div><label className={LABEL_CLASS}>Geography / context</label><input type="text" value={geography} onChange={(e) => setGeography(e.target.value)} placeholder="e.g. remote, US-based" disabled={isLoading} className={FIELD_CLASS} /></div>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div><label className={LABEL_CLASS}>Option A</label><input type="text" value={optionA} onChange={(e) => setOptionA(e.target.value)} disabled={isLoading} className={FIELD_CLASS} /></div>
           <div><label className={LABEL_CLASS}>Option B</label><input type="text" value={optionB} onChange={(e) => setOptionB(e.target.value)} disabled={isLoading} className={FIELD_CLASS} /></div>
           <div><label className={LABEL_CLASS}>Option C (optional)</label><input type="text" value={optionC} onChange={(e) => setOptionC(e.target.value)} disabled={isLoading} className={FIELD_CLASS} /></div>
@@ -360,7 +362,7 @@ function HistoricalPrecedentsPanel() {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="shrink-0 border-b border-gray-200 bg-white px-8 py-3">
+    <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 sm:px-8">
       <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between text-left">
         <span className="text-xs font-semibold tracking-widest text-gray-600 uppercase">Historical Precedents</span>
         <ChevronDown className={`size-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -371,7 +373,7 @@ function HistoricalPrecedentsPanel() {
         ) : (
           <ul className="mt-3 flex gap-3 overflow-x-auto pb-2">
             {historicalPrecedents.map((p) => (
-              <li key={p.chunk_id} className="w-72 shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <li key={p.chunk_id} className="w-[min(18rem,80vw)] shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <p className="text-xs leading-snug text-gray-800">{p.snippet}</p>
                 <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500 font-mono">
                   {p.source_type && <span>{p.source_type}</span>}
@@ -395,7 +397,7 @@ function ExternalEvidencePanel() {
     : simulationData?.evidenceProvider ?? 'Evidence';
 
   return (
-    <div className="shrink-0 border-b border-gray-200 bg-gray-50/50 px-8 py-3">
+    <div className="shrink-0 border-b border-gray-200 bg-gray-50/50 px-4 py-3 sm:px-8">
       <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between text-left">
         <span className="flex items-center gap-2">
           <span className="text-xs font-semibold tracking-widest text-gray-600 uppercase">External Evidence</span>
@@ -409,7 +411,7 @@ function ExternalEvidencePanel() {
         ) : (
           <ul className="mt-3 flex gap-3 overflow-x-auto pb-2">
             {externalEvidence.map((e) => (
-              <li key={e.id} className="w-80 shrink-0 rounded-lg border border-gray-200 bg-white p-4">
+              <li key={e.id} className="w-[min(20rem,82vw)] shrink-0 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-xs font-semibold leading-snug text-gray-900">{e.title}</p>
                   <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">{Math.round(e.confidence * 100)}%</span>
@@ -439,7 +441,7 @@ function AgentCouncilPanel() {
   if (!agentCouncil) return null;
 
   return (
-    <div className="shrink-0 border-b border-gray-200 bg-white px-8 py-3">
+    <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 sm:px-8">
       <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between text-left">
         <span className="flex items-center gap-2">
           <span className="text-xs font-semibold tracking-widest text-gray-600 uppercase">Agent Council</span>
@@ -450,7 +452,7 @@ function AgentCouncilPanel() {
       {expanded && (
         <ul className="mt-3 flex gap-3 overflow-x-auto pb-2">
           {agentCouncil.agents.map((a) => (
-            <li key={a.agent_id} className="w-72 shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <li key={a.agent_id} className="w-[min(18rem,80vw)] shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <div className="flex items-start justify-between gap-2">
                 <span className="text-xs font-bold text-gray-900">{a.agent_label}</span>
               </div>
@@ -475,17 +477,17 @@ function SimulateFuturesView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-8 py-4">
-        <div className="w-1/3">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-white px-4 py-4 sm:px-8 md:flex-row md:items-center md:justify-between">
+        <div className="md:w-1/3">
           <h2 className="text-xl font-serif font-bold text-gray-900">Simulated Futures</h2>
           <p className="text-xs text-gray-500 mt-1">{simulationData.timelines.length} evidence-backed branches</p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
-          <button onClick={() => setActiveTab('timelines')} className={`px-6 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'timelines' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>Timeline Branches</button>
-          <button onClick={() => setActiveTab('graph')} className={`px-6 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'graph' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>Memory Graph</button>
+        <div className="flex w-full bg-gray-100 p-1 rounded-lg border border-gray-200 md:w-auto">
+          <button onClick={() => setActiveTab('timelines')} className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all sm:px-6 ${activeTab === 'timelines' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>Timeline Branches</button>
+          <button onClick={() => setActiveTab('graph')} className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all sm:px-6 ${activeTab === 'graph' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>Memory Graph</button>
         </div>
-        <div className="w-1/3 flex justify-end">
-          <button onClick={() => setStep(4)} className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-800">
+        <div className="flex md:w-1/3 md:justify-end">
+          <button onClick={() => setStep(4)} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 md:w-auto">
             <MessageSquare className="size-4" /> Talk to Future Self
           </button>
         </div>
@@ -496,7 +498,7 @@ function SimulateFuturesView() {
             <HistoricalPrecedentsPanel />
             <ExternalEvidencePanel />
             <AgentCouncilPanel />
-            <div className="flex min-h-0 flex-1 gap-6 overflow-auto p-8 items-start">
+            <div className="flex min-h-0 flex-1 gap-4 overflow-auto p-4 items-start sm:gap-6 sm:p-8">
               {simulationData.timelines.map((timeline) => (
                 <TimelineCard
                   key={timeline.id}
@@ -575,6 +577,12 @@ function Curtain({ animatingOut, fadeInOnMount = false }: { animatingOut: boolea
         transition-opacity duration-[800ms] ease-[cubic-bezier(0.76,0,0.24,1)]
         ${curtainShown ? 'opacity-100' : 'opacity-0'} ${animatingOut ? 'pointer-events-none' : ''}`}
     >
+      <img
+        src={CHRONOS_LOGO_SRC}
+        alt=""
+        className={`mb-5 size-14 transition-all duration-700 ease-out
+          ${textShown ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+      />
       <h1
         className={`text-5xl font-serif tracking-tighter transition-all duration-700 ease-out
           ${textShown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
@@ -668,21 +676,19 @@ export default function App() {
       {isLaunchTransitioning && <Curtain animatingOut={isLaunchExiting} fadeInOnMount />}
 
       {/* ── Youssri-style Narrow Left Sidebar ── */}
-      <aside className="fixed inset-y-0 left-0 w-16 border-r border-gray-200 bg-white z-50 flex flex-col items-center py-10">
-        <div className="flex-none h-24 mb-16 relative w-full flex justify-center items-center">
-          <span className="-rotate-90 whitespace-nowrap text-[13px] font-serif font-bold tracking-widest uppercase text-gray-900 absolute">
-            CE
-          </span>
+      <aside className="fixed inset-x-0 top-0 z-50 flex h-14 items-center border-b border-gray-200 bg-white px-4 sm:inset-y-0 sm:left-0 sm:h-auto sm:w-16 sm:flex-col sm:border-b-0 sm:border-r sm:px-0 sm:py-10">
+        <div className="relative flex h-full w-auto flex-none items-center justify-center sm:mb-16 sm:h-24 sm:w-full">
+          <img src={CHRONOS_LOGO_SRC} alt="Chronos Engine" className="size-8 sm:size-10" />
         </div>
 
-        <nav className="flex-1 flex flex-col items-center gap-16 justify-center w-full">
+        <nav className="ml-auto flex flex-1 items-center justify-end gap-4 sm:ml-0 sm:w-full sm:flex-col sm:justify-center sm:gap-16">
 
           {/* Chronos Link */}
-          <div className="relative w-full h-32 flex justify-center items-center">
+          <div className="relative flex h-auto w-auto items-center justify-center sm:h-32 sm:w-full">
             <button
               type="button"
               onClick={() => handleScrollNav('chronos-top')}
-              className={`-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute transition-colors duration-300
+              className={`whitespace-nowrap text-[10px] tracking-[0.12em] uppercase transition-colors duration-300 sm:absolute sm:-rotate-90 sm:text-[11px] sm:tracking-[0.2em]
                 ${currentStep === 0 && activeSection === 'chronos-top' ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'}`}
             >
               Chronos
@@ -690,11 +696,11 @@ export default function App() {
           </div>
 
           {/* Impact / FAQ Dynamic Link */}
-          <div className="relative w-full h-32 flex justify-center items-center">
+          <div className="relative flex h-auto w-auto items-center justify-center sm:h-32 sm:w-full">
             <button
               type="button"
               onClick={() => handleScrollNav('impact-section')}
-              className="-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute flex items-center justify-center w-24 h-4"
+              className="relative flex h-4 w-16 items-center justify-center whitespace-nowrap text-[10px] tracking-[0.12em] uppercase sm:absolute sm:w-24 sm:-rotate-90 sm:text-[11px] sm:tracking-[0.2em]"
             >
               <span className={`absolute transition-opacity duration-500 ${currentStep === 0 && (activeSection === 'impact-section' || activeSection === 'faq-section') ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'} ${activeSection === 'faq-section' ? 'opacity-0' : 'opacity-100'}`}>
                 Impact
@@ -706,11 +712,11 @@ export default function App() {
           </div>
 
           {/* Launch Program Link */}
-          <div className="relative w-full h-32 flex justify-center items-center">
+          <div className="relative flex h-auto w-auto items-center justify-center sm:h-32 sm:w-full">
             <button
               type="button"
               onClick={handleLaunch}
-              className={`-rotate-90 whitespace-nowrap text-[11px] tracking-[0.2em] uppercase absolute transition-colors duration-300
+              className={`whitespace-nowrap text-[10px] tracking-[0.12em] uppercase transition-colors duration-300 sm:absolute sm:-rotate-90 sm:text-[11px] sm:tracking-[0.2em]
                 ${currentStep > 0 ? 'text-gray-900 font-bold' : 'text-gray-400 hover:text-gray-900'}`}
             >
               Launch Program
@@ -721,7 +727,7 @@ export default function App() {
       </aside>
 
       {/* ── Main Content Area (Offset by sidebar width: pl-16) ── */}
-      <main id="main-scroll-area" className="flex-1 flex flex-col pl-16 relative min-h-0 h-screen overflow-auto bg-gray-50">
+      <main id="main-scroll-area" className="flex-1 flex flex-col pt-14 sm:pl-16 sm:pt-0 relative min-h-0 h-screen overflow-auto bg-gray-50">
 
         {/* Step 0: The Unified Scrolling Landing Page */}
         {currentStep === 0 && <LandingPage onLaunch={handleLaunch} />}
@@ -729,7 +735,8 @@ export default function App() {
         {/* Steps 1-4: The Application Wizard */}
         {currentStep > 0 && (
           <div className="flex flex-col h-full bg-gray-50">
-            <header className="shrink-0 border-b border-gray-200 bg-white px-8 py-5">
+            <header className="shrink-0 border-b border-gray-200 bg-white px-4 py-4 sm:px-8 sm:py-5">
+              <img src={CHRONOS_LOGO_SRC} alt="" className="mb-2 size-9" />
               <h1 className="text-2xl font-serif font-bold text-gray-900 leading-none">
                 Chronos Engine
               </h1>

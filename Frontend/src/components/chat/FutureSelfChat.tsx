@@ -328,7 +328,7 @@ export function FutureSelfChat() {
   return (
     <div className="flex h-full flex-col bg-white">
       <header className="shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-md">
-        <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-4 py-1.5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-gray-50 px-4 py-1.5">
           <span className="flex items-center gap-1.5" aria-hidden="true">
             <span className="size-2 rounded-full bg-red-400" />
             <span className="size-2 rounded-full bg-amber-400" />
@@ -337,17 +337,17 @@ export function FutureSelfChat() {
           <span className="font-mono text-[9px] tracking-[0.2em] text-gray-500 uppercase">
             chronos://future-self · session_04
           </span>
-          <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] tracking-[0.2em] text-gray-900 uppercase">
+          <span className="ml-auto hidden items-center gap-1.5 font-mono text-[9px] tracking-[0.2em] text-gray-900 uppercase sm:flex">
             <span className="size-1.5 animate-pulse rounded-full bg-gray-900" aria-hidden="true" />
             structured simulation
           </span>
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3">
+        <div className="relative flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <button
             type="button"
             onClick={() => setStep(3)}
-            className="group flex items-center gap-2 rounded-lg border border-transparent px-3 py-1.5
+            className="group flex w-fit items-center gap-2 rounded-lg border border-transparent px-3 py-1.5
               text-sm text-gray-500 hover:text-gray-900
               hover:border-gray-200 hover:bg-gray-50
               transition-all duration-200"
@@ -356,12 +356,12 @@ export function FutureSelfChat() {
               ←
             </span>
             Back to Timelines
-            <kbd className="ml-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 font-mono text-[9px] text-gray-400 group-hover:text-gray-600">
+            <kbd className="ml-1 hidden rounded border border-gray-200 bg-white px-1.5 py-0.5 font-mono text-[9px] text-gray-400 group-hover:text-gray-600 sm:inline">
               esc
             </kbd>
           </button>
 
-          <div className="absolute left-1/2 -translate-x-1/2 text-center">
+          <div className="text-left sm:absolute sm:left-1/2 sm:-translate-x-1/2 sm:text-center">
             <p className="font-serif text-lg font-bold text-gray-900">
               Future Self Avatar
             </p>
@@ -369,7 +369,7 @@ export function FutureSelfChat() {
               Answers cite nodes from your memory graph
             </p>
           </div>
-          <div className="w-36" aria-hidden="true" />
+          <div className="hidden w-36 sm:block" aria-hidden="true" />
         </div>
       </header>
 
@@ -412,12 +412,12 @@ export function FutureSelfChat() {
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Ask your future self…"
             disabled={isReplyPending}
-            className="flex-1 bg-transparent py-3 pr-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50 transition-all duration-200"
+            className="min-w-0 flex-1 bg-transparent py-3 pr-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50 transition-all duration-200"
           />
           <button
             type="submit"
             disabled={!draft.trim() || isReplyPending}
-            className="inline-flex items-center gap-2 rounded-lg m-1.5 bg-gray-900 px-5 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-35 transition-all duration-200 hover:bg-gray-800"
+            className="inline-flex items-center gap-1 rounded-lg m-1.5 bg-gray-900 px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-35 transition-all duration-200 hover:bg-gray-800 sm:gap-2 sm:px-5"
           >
             <Send className="size-4" aria-hidden="true" />
             Send

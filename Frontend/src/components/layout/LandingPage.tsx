@@ -79,23 +79,23 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
     <div className="flex flex-col bg-white text-gray-900 w-full">
 
       {/* ── Section 1: Hero & Marquee ── */}
-      <section id="chronos-top" className="min-h-screen flex flex-col justify-between pt-20">
-        <div className="flex-1 flex flex-col justify-center px-10 md:px-20 max-w-7xl">
+      <section id="chronos-top" className="min-h-screen flex flex-col justify-between pt-16 sm:pt-20">
+        <div className="flex-1 flex flex-col justify-center px-5 sm:px-10 md:px-20 max-w-7xl">
           <p className="text-xs tracking-[0.2em] text-gray-400 uppercase mb-6 font-medium">
             Decision Intelligence, Reconsidered
           </p>
 
-          <div className="relative h-48 md:h-[14rem] lg:h-[18rem] mb-4">
+          <div className="relative h-56 sm:h-48 md:h-[14rem] lg:h-[18rem] mb-4">
 
             {/* Default State: Chronos Engine */}
             <div
               className={`absolute inset-0 transition-all duration-700 ease-out
                 ${!hoveredFeature ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-4 pointer-events-none'}`}
             >
-              <h1 className="text-6xl md:text-8xl lg:text-[9rem] font-serif font-normal tracking-tighter leading-[0.85] mb-8 text-gray-900">
+              <h1 className="text-5xl sm:text-6xl md:text-8xl lg:text-[9rem] font-serif font-normal tracking-tighter leading-[0.9] sm:leading-[0.85] mb-6 sm:mb-8 text-gray-900">
                 Chronos<br/>Engine
               </h1>
-              <p className="text-lg md:text-xl text-gray-500 max-w-2xl leading-relaxed">
+              <p className="text-base sm:text-lg md:text-xl text-gray-500 max-w-2xl leading-relaxed">
                 A single system of record for every decision your organization makes — modeled, simulated, and measured before it ships.
               </p>
             </div>
@@ -107,10 +107,10 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
                 className={`absolute inset-0 transition-all duration-700 ease-out
                   ${hoveredFeature?.title === f.title ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
               >
-                <h1 className="text-5xl md:text-7xl lg:text-[7rem] font-serif font-normal tracking-tighter leading-[0.9] mb-6 text-gray-900">
+                <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-[7rem] font-serif font-normal tracking-tighter leading-[0.95] sm:leading-[0.9] mb-5 sm:mb-6 text-gray-900">
                   {f.title}
                 </h1>
-                <p className="text-lg md:text-2xl text-gray-500 max-w-2xl leading-relaxed">
+                <p className="text-base sm:text-lg md:text-2xl text-gray-500 max-w-2xl leading-relaxed">
                   {f.desc}
                 </p>
               </div>
@@ -119,7 +119,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
 
           <button
             onClick={() => launch()}
-            className="w-fit mt-12 border border-gray-900 px-8 py-4 text-xs uppercase tracking-widest font-semibold transition-all duration-300 hover:bg-gray-900 hover:text-white"
+            className="w-full mt-10 border border-gray-900 px-8 py-4 text-xs uppercase tracking-widest font-semibold transition-all duration-300 hover:bg-gray-900 hover:text-white sm:mt-12 sm:w-fit"
           >
             Launch Program
           </button>
@@ -144,7 +144,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
                     key={`set${setIndex}-${i}`}
                     onMouseEnter={() => setHoveredFeature(f)}
                     onMouseLeave={() => setHoveredFeature(null)}
-                    className="w-80 flex-shrink-0 p-6 bg-white border border-gray-100 shadow-sm transition-all duration-500
+                  className="w-72 sm:w-80 flex-shrink-0 p-5 sm:p-6 bg-white border border-gray-100 shadow-sm transition-all duration-500
                               hover:!opacity-100 hover:scale-105 cursor-default"
                     style={{ opacity: hoveredFeature && hoveredFeature.title !== f.title ? 0.3 : 1 }}
                   >
@@ -160,14 +160,14 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
       </section>
 
       {/* ── Section 2: Practical Use Cases ── */}
-      <section id="impact-section" className="min-h-[80vh] flex flex-col justify-center px-10 md:px-20 max-w-7xl py-32 border-t border-gray-100">
+      <section id="impact-section" className="min-h-[80vh] flex flex-col justify-center px-5 sm:px-10 md:px-20 max-w-7xl py-20 sm:py-32 border-t border-gray-100">
         <FadeInBlock delay={0}>
           <p className="text-xs tracking-[0.2em] text-gray-400 uppercase mb-6 font-medium">
             Practical Applications
           </p>
         </FadeInBlock>
         <FadeInBlock delay={100}>
-          <h1 className="text-5xl md:text-7xl font-serif font-normal tracking-tighter leading-tight mb-16">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-serif font-normal tracking-tighter leading-tight mb-12 sm:mb-16">
             De-risk every critical maneuver.
           </h1>
         </FadeInBlock>
@@ -194,11 +194,11 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
       </section>
 
       {/* ── Section 3: Video Section ── */}
-      <section className="py-32 bg-gray-50 border-y border-gray-100 flex flex-col items-center justify-center px-10">
+      <section className="py-20 sm:py-32 bg-gray-50 border-y border-gray-100 flex flex-col items-center justify-center px-5 sm:px-10">
         <FadeInBlock delay={0}>
           <div className="text-center mb-12">
             <h2 className="text-sm tracking-[0.2em] uppercase text-gray-500 font-semibold mb-3">How it works</h2>
-            <p className="text-4xl md:text-5xl font-serif font-normal">Seamless ingestion to simulation.</p>
+            <p className="text-3xl sm:text-4xl md:text-5xl font-serif font-normal">Seamless ingestion to simulation.</p>
           </div>
         </FadeInBlock>
 
@@ -208,7 +208,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
               <span className="bg-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-sm text-gray-600">
                 Video Canvas Placeholder
               </span>
-              <p className="mt-4 text-sm text-gray-500 max-w-sm mx-auto">
+              <p className="mt-4 px-4 text-sm text-gray-500 max-w-sm mx-auto">
                 Implement Framer Motion <code>useScroll</code> here to scrub a canvas image sequence based on viewport scroll progress.
               </p>
             </div>
@@ -217,7 +217,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
       </section>
 
       {/* ── Section 4: FAQ ── */}
-      <section id="faq-section" className="px-10 md:px-20 max-w-5xl py-32 mx-auto w-full">
+      <section id="faq-section" className="px-5 sm:px-10 md:px-20 max-w-5xl py-20 sm:py-32 mx-auto w-full">
         <FadeInBlock delay={0}>
           <h2 className="text-4xl md:text-5xl font-serif font-normal tracking-tighter mb-16">
             Frequently Asked Questions

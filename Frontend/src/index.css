@@ -26,8 +26,8 @@
   backface-visibility: hidden;
 }
 
-/* Chronos Engine loader text: a soft shimmer sweep across the letters,
-   similar to Claude's own loading text. Entrance/exit opacity for the
+/* Chronos Engine loader text: a soft shimmer sweep across the letters.
+   Entrance/exit opacity for the
    curtain itself is handled with React-controlled CSS transitions
    (see the Curtain component in App.tsx) rather than mount-timed
    keyframes, which is more reliable across browsers. */
