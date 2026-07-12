@@ -174,6 +174,11 @@ def _fetch_user_repos(token: str, limit: int) -> list[tuple[str, str]]:
 
 
 def sources() -> list[GithubSource]:
+    if not config.GITHUB_ALLOW_REPO_DISCOVERY:
+        raise HTTPException(
+            status_code=403,
+            detail="GitHub repository discovery is disabled for this public demo. Paste a public owner/repo instead.",
+        )
     token = (get_account("github").access_token if get_account("github") else None) or config.GITHUB_TOKEN
     if not token:
         raise HTTPException(status_code=401, detail="Connect GitHub or set GITHUB_TOKEN before listing repositories.")

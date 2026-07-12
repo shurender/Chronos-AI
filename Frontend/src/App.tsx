@@ -33,6 +33,7 @@ const GithubIcon = ({ className }: { className?: string }) => (
 function ConnectDataView() {
   const [maxItems, setMaxItems] = useState(200);
   const [manualGithubRepo, setManualGithubRepo] = useState('');
+  const publicGithubExamples = ['fastapi/fastapi', 'vercel/next.js', 'microsoft/vscode'];
   const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
   const startConnector = useChronosStore((state) => state.startConnector);
   const ingestGithubRepo = useChronosStore((state) => state.ingestGithubRepo);
@@ -54,7 +55,7 @@ function ConnectDataView() {
   }, [refreshConnectors]);
 
   useEffect(() => {
-    (['github', 'slack', 'notion'] as ConnectorProvider[]).forEach((provider) => {
+    (['slack', 'notion'] as ConnectorProvider[]).forEach((provider) => {
       if (connectorStatuses[provider].connected && connectorSources[provider].length === 0) {
         void loadConnectorSources(provider);
       }
@@ -62,7 +63,7 @@ function ConnectDataView() {
   }, [connectorStatuses, connectorSources, loadConnectorSources]);
 
   const sources = [
-    { provider: 'github', icon: GithubIcon, label: 'Connect GitHub', sub: 'Commits & issues' },
+    { provider: 'github', icon: GithubIcon, label: 'Add public GitHub repo', sub: 'Paste owner/repo or URL' },
     { provider: 'slack', icon: SlackIcon, label: 'Connect Slack', sub: 'Threads & channels' },
     { provider: 'notion', icon: NotionIcon, label: 'Connect Notion', sub: 'Docs & pages' },
   ] as const;
@@ -131,11 +132,11 @@ function ConnectDataView() {
                 <span className="block text-sm font-semibold text-gray-900">{label}</span>
                 <span className="block mt-0.5 text-[11px] text-gray-500">{sub}</span>
               </div>
-              <div className={`mt-auto flex items-center gap-1.5 text-[11px] font-medium ${statusClass(status)}`}>
-                {status.status === 'connected' ? <CheckCircle2 className="size-3.5" /> : status.status === 'error' ? <AlertCircle className="size-3.5" /> : <Plug className="size-3.5" />}
-                <span>{statusText(status)}</span>
+              <div className={`mt-auto flex items-center gap-1.5 text-[11px] font-medium ${provider === 'github' ? 'text-gray-500' : statusClass(status)}`}>
+                {provider === 'github' ? <Plug className="size-3.5" /> : status.status === 'connected' ? <CheckCircle2 className="size-3.5" /> : status.status === 'error' ? <AlertCircle className="size-3.5" /> : <Plug className="size-3.5" />}
+                <span>{provider === 'github' ? 'Public repo only' : statusText(status)}</span>
               </div>
-              {status.connected && (
+              {status.connected && provider !== 'github' && (
                 <div className="w-full rounded-lg border border-gray-200 bg-white p-2 text-left">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold text-gray-700">{selectedIds.length} selected</span>
@@ -173,20 +174,22 @@ function ConnectDataView() {
                   )}
                 </div>
               )}
-              <button
-                onClick={() => {
-                  if (status.connected) {
-                    void syncConnector(provider, { sourceIds: selectedIds, maxItems });
-                  } else {
-                    startConnector(provider);
-                  }
-                }}
-                disabled={isLoading}
-                className="w-full rounded-lg border border-gray-900 bg-gray-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {status.status === 'syncing' ? 'Syncing...' : status.connected ? 'Sync selected' : 'Connect'}
-              </button>
-              {status.error && <p className="text-[11px] leading-snug text-red-600">{status.error}</p>}
+              {provider !== 'github' && (
+                <button
+                  onClick={() => {
+                    if (status.connected) {
+                      void syncConnector(provider, { sourceIds: selectedIds, maxItems });
+                    } else {
+                      startConnector(provider);
+                    }
+                  }}
+                  disabled={isLoading}
+                  className="w-full rounded-lg border border-gray-900 bg-gray-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {status.status === 'syncing' ? 'Syncing...' : status.connected ? 'Sync selected' : 'Connect'}
+                </button>
+              )}
+              {provider !== 'github' && status.error && <p className="text-[11px] leading-snug text-red-600">{status.error}</p>}
               {provider === 'github' && (
                 <form
                   className="w-full rounded-lg border border-gray-200 bg-white p-2 text-left"
@@ -197,7 +200,7 @@ function ConnectDataView() {
                   }}
                 >
                   <label className="block text-[11px] font-semibold text-gray-700">
-                    Or ingest a repo directly
+                    Public repo to ingest
                   </label>
                   <input
                     type="text"
@@ -212,16 +215,32 @@ function ConnectDataView() {
                     disabled={isLoading || !manualGithubRepo.trim()}
                     className="mt-2 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Ingest repo
+                    Ingest & continue
                   </button>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {publicGithubExamples.map((repo) => (
+                      <button
+                        key={repo}
+                        type="button"
+                        onClick={() => setManualGithubRepo(repo)}
+                        disabled={isLoading}
+                        className="rounded-full border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-500 transition hover:border-gray-300 hover:text-gray-900 disabled:opacity-40"
+                      >
+                        {repo}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] leading-snug text-gray-400">
+                    This public demo does not browse token-backed account repositories.
+                  </p>
                 </form>
               )}
-              {status.connected && (
+              {status.connected && provider !== 'github' && (
                 <p className="text-[11px] text-gray-500">
                   {(status.source_counts.new ?? 0)} new · {(status.source_counts.updated ?? 0)} updated · {(status.source_counts.skipped_duplicate ?? 0)} skipped
                 </p>
               )}
-              {status.connected && (
+              {status.connected && provider !== 'github' && (
                 <p className="text-[11px] text-gray-500">
                   {status.items_ingested ?? status.source_counts.chunks ?? 0} items · {status.source_counts.nodes ?? 0} nodes
                 </p>

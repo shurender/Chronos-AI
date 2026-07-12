@@ -22,6 +22,7 @@ from pathlib import Path
 import httpx
 from fastapi import UploadFile
 
+from backend import config
 from backend.Decision_Graph.extraction_pipeline import build_pipeline, run_pipeline_on_chunk
 from backend.ingestion_pipeline.parsers.github_parser import parse_github_commits, parse_github_issues
 from backend.ingestion_pipeline.parsers.notion_parser import parse_notion_markdown
@@ -318,7 +319,7 @@ def _fetch_github(owner: str, name: str, include_issues: bool, max_items: int) -
     as a Bearer token if set (raises the unauthenticated 60 req/hr rate limit),
     but works without one for public repos."""
     headers = {"Accept": "application/vnd.github+json"}
-    token = os.getenv("GITHUB_TOKEN")
+    token = os.getenv("GITHUB_TOKEN") if config.GITHUB_PUBLIC_INGEST_USE_TOKEN else None
     if token:
         headers["Authorization"] = f"Bearer {token}"
 

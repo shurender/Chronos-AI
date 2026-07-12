@@ -84,6 +84,8 @@ GITHUB_REDIRECT_URI: str = os.getenv(
     "GITHUB_REDIRECT_URI", "http://localhost:8000/connectors/github/callback"
 )
 GITHUB_TOKEN: str | None = os.getenv("GITHUB_TOKEN") or None
+GITHUB_ALLOW_REPO_DISCOVERY: bool = _bool_env("GITHUB_ALLOW_REPO_DISCOVERY", False)
+GITHUB_PUBLIC_INGEST_USE_TOKEN: bool = _bool_env("GITHUB_PUBLIC_INGEST_USE_TOKEN", False)
 
 SLACK_CLIENT_ID: str | None = os.getenv("SLACK_CLIENT_ID") or None
 SLACK_CLIENT_SECRET: str | None = os.getenv("SLACK_CLIENT_SECRET") or None
@@ -131,6 +133,8 @@ def safe_debug_config() -> dict:
         "requireLiveLlm": REQUIRE_LIVE_LLM,
         "githubClientConfigured": bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET),
         "githubTokenPresent": bool(GITHUB_TOKEN),
+        "githubRepoDiscoveryEnabled": GITHUB_ALLOW_REPO_DISCOVERY,
+        "githubPublicIngestUsesToken": GITHUB_PUBLIC_INGEST_USE_TOKEN,
         "slackClientConfigured": bool(SLACK_CLIENT_ID and SLACK_CLIENT_SECRET),
         "slackSigningSecretPresent": bool(SLACK_SIGNING_SECRET),
         "notionClientConfigured": bool(NOTION_CLIENT_ID and NOTION_CLIENT_SECRET),

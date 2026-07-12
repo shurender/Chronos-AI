@@ -40,3 +40,7 @@ services:
         sync: false
       - key: GITHUB_TOKEN
         sync: false
+      - key: GITHUB_ALLOW_REPO_DISCOVERY
+        value: "false"
+      - key: GITHUB_PUBLIC_INGEST_USE_TOKEN
+        value: "false"
