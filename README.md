@@ -1,6 +1,12 @@
 # ⏳ Chronos Engine
 **AMD Developer Hackathon: ACT II | Unicorn Track**
 
+## Demo Video
+
+<video src="Frontend/public/demo-video.mp4" controls width="100%"></video>
+
+If the video does not render inline on GitHub, open it directly: [Frontend/public/demo-video.mp4](Frontend/public/demo-video.mp4)
+
 Chronos Engine is an AI-powered Decision Intelligence digital twin platform. It ingests your past data (Slack, GitHub, Notion) to build a memory graph, then runs a structured simulation — a heuristic MVP engine plus a lightweight multi-agent council — to explore a handful of evidence-backed plausible timeline branches per decision, optimizing for "Expected Regret." Chronos explores plausible futures from available evidence; it does not predict the future, and it is not a guaranteed forecast.
 
 ---
