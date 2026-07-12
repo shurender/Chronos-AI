@@ -34,6 +34,7 @@ function ConnectDataView() {
   const [maxItems, setMaxItems] = useState(200);
   const [manualGithubRepo, setManualGithubRepo] = useState('');
   const publicGithubExamples = ['fastapi/fastapi', 'vercel/next.js', 'microsoft/vscode'];
+  const setStep = useChronosStore((state) => state.setStep);
   const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
   const startConnector = useChronosStore((state) => state.startConnector);
   const checkGithubRepo = useChronosStore((state) => state.checkGithubRepo);
@@ -50,7 +51,12 @@ function ConnectDataView() {
   const connectStatus = useChronosStore((state) => state.connectStatus);
   const errorMessage = useChronosStore((state) => state.errorMessage);
   const backendStatus = useChronosStore((state) => state.backendStatus);
+  const lastIngestionRun = useChronosStore((state) => state.lastIngestionRun);
   const isLoading = useChronosStore((state) => state.isLoading);
+  const canContinueAfterIngest =
+    !!lastIngestionRun &&
+    lastIngestionRun.source_type === 'github' &&
+    (lastIngestionRun.chunks_created > 0 || lastIngestionRun.nodes_created > 0 || lastIngestionRun.edges_created > 0);
 
   useEffect(() => {
     void refreshConnectors();
@@ -229,7 +235,7 @@ function ConnectDataView() {
                       disabled={isLoading || !manualGithubRepo.trim()}
                       className="rounded-md border border-gray-900 bg-gray-900 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Ingest & continue
+                      Ingest repo
                     </button>
                   </div>
                   {githubRepoCheck && (
@@ -310,6 +316,21 @@ function ConnectDataView() {
             {isLoading ? 'Loading sample data...' : 'Use sample demo data'}
           </button>
         </div>
+        {canContinueAfterIngest && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+            <p className="text-xs font-semibold text-emerald-800">Repo ingestion complete</p>
+            <p className="mt-1 text-xs text-emerald-700">
+              {lastIngestionRun.chunks_created} chunks · {lastIngestionRun.nodes_created} nodes · {lastIngestionRun.edges_created} edges
+            </p>
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="mt-3 w-full rounded-lg bg-gray-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
+            >
+              Continue to simulation setup
+            </button>
+          </div>
+        )}
         {connectStatus && <p className="mt-3 text-xs text-emerald-700">{connectStatus}</p>}
         {errorMessage && <p className="mt-3 text-xs text-red-600">{errorMessage}</p>}
       </div>

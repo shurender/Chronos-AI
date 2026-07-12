@@ -449,7 +449,6 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
         errorMessage: hasUsefulOutput ? null : 'Repo was reachable, but no useful commits/issues were ingested. Try another public repo with recent commits or issues.',
         backendStatus: 'connected',
         isLoading: false,
-        currentStep: hasUsefulOutput ? 2 : get().currentStep,
       });
     } catch (error) {
       console.warn('GitHub ingestion failed.', error);
