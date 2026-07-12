@@ -11,9 +11,9 @@ Chronos Engine is an AI-powered Decision Intelligence digital twin platform. It 
 |---|---|
 | Memory graph extraction (Slack/GitHub/Notion → nodes/edges) | ✅ Implemented |
 | Forecast engine (`/forecast/decision`, `/simulate`) | ⚠️ Heuristic MVP — deterministic, seeded, not ML-trained |
-| External evidence layer (`/evidence`) | ⚠️ Demo pack — curated local JSON, not live web search |
-| Multi-agent council (Historian/Behavioral/Domain/Market/Risk/Strategist) | ⚠️ Lightweight MVP — deterministic structured functions, not autonomous LLM agents yet |
-| Future Self chat (`/avatar/chat`) | ⚠️ Grounded MVP — Groq-backed when `GROQ_API_KEY` is set, deterministic labelled fallback otherwise |
+| External evidence layer (`/evidence`) | ✅ Demo, uploaded, Tavily, and hybrid modes. Tavily results are labelled as live external signals, not verified facts |
+| Multi-agent council (Historian/Behavioral/Domain/Market/Risk/Strategist) | ⚠️ Lightweight MVP — deterministic by default, with optional LLM-enriched rationale via provider config |
+| Future Self chat (`/avatar/chat`) | ✅ Provider-backed when configured (`fireworks`, `groq`, `ollama`, `vllm`) with deterministic/mock fallback |
 | AMD GPU / vLLM / ROCm execution | ⚙️ Provider adapter in place (`LLM_PROVIDER=vllm`); ships a live vLLM endpoint yourself — see [AMD/vLLM deployment mode](#-amdvllm-deployment-mode) |
 
 This is a working MVP built to demonstrate the architecture end-to-end, not a production-scale system. Every simulated output is heuristic and explorable, not a guaranteed prediction.
@@ -32,7 +32,7 @@ This is a working MVP built to demonstrate the architecture end-to-end, not a pr
 **Backend & AI**
 * **API Framework:** FastAPI + Uvicorn
 * **AI Orchestration:** LangGraph + LangChain
-* **LLM Provider:** Groq (Llama 3)
+* **LLM Provider:** Fireworks, Groq, Ollama, vLLM, or deterministic mock
 * **Vector Store:** ChromaDB (Local SQLite)
 * **Embeddings:** Local Sentence-Transformers (CPU optimized)
 * **Graph Logic:** NetworkX
@@ -74,13 +74,24 @@ python -m venv .venv
 ```bash
 pip install -r requirements-cpu.txt
 ```
-### 3. Set up your API Key:
-Create a new file named .env in the root folder (Chronos-AI-main/.env) and add your Groq API key:
+### 3. Configure backend environment:
+Copy the example env file, then add only the keys you want to use. Do not commit `.env`.
 ```bash
-GROQ_API_KEY=
-FIREWORKS_API_KEY=
-TAVILY_API_KEY=
+copy .env.example .env
 ```
+
+Useful local live-mode values:
+```bash
+LLM_PROVIDER=fireworks
+FIREWORKS_API_KEY=
+EVIDENCE_PROVIDER=hybrid
+TAVILY_API_KEY=
+GITHUB_TOKEN=
+DEMO_MODE=false
+CORS_ORIGINS=http://localhost:5173
+```
+
+`GITHUB_TOKEN` is optional, but enables authenticated GitHub repo ingestion and private repo access. Public repos can also be ingested from the app by entering `owner/repo` or a GitHub URL under the GitHub card.
 ### 4. Start the API server:
 ```bash
 uvicorn backend.api:app --reload --port 8000
@@ -115,9 +126,23 @@ npm run dev
 
    1. Open your browser and navigate to: http://localhost:5173
 
-   2. You will be greeted by the Landing Page. Click Launch App.
+   2. You will be greeted by the Landing Page. Click Launch Program.
 
-   3. Proceed through the wizard. When you arrive at Step 2 and click "Run Simulation", the Frontend will communicate with the Python backend via CORS, fetching the live Memory Graph data and pinging the Decision Forecast engine!
+   3. Connect data by authenticating GitHub/Slack/Notion, entering a GitHub repo directly, uploading files, or using sample demo data.
+
+   4. Define a decision and click "Run Simulation". The frontend calls the FastAPI backend, refreshes the Memory Graph, pulls relevant evidence, and renders simulated timeline branches.
+
+### Upload support
+
+The upload flow supports `.pdf`, `.txt`, `.md`, `.markdown`, and `.json`. Text PDFs require `pypdf` from `requirements-cpu.txt`. If a PDF has no selectable text, Chronos returns a clear warning instead of pretending ingestion succeeded silently. Extraction warnings, including possible contradictions, are summarized in the UI.
+
+### Source labels
+
+Chronos keeps source labels explicit:
+- GitHub/Slack/Notion connector data is marked as authenticated/live when actually synced from those providers.
+- Uploaded files are marked as user-supplied.
+- Demo workspace data is marked as demo/local.
+- Tavily evidence is marked as live external evidence, not a verified fact.
 
 ---
 
@@ -157,8 +182,8 @@ docker compose up --build
 
 | | Demo (default) | Production-ish |
 |---|---|---|
-| `LLM_PROVIDER` | `mock` (offline) | `groq` / `vllm` (needs key or local endpoint) |
-| `EVIDENCE_PROVIDER` | `demo` (curated local pack) | `uploaded` / `hybrid` |
+| `LLM_PROVIDER` | `mock` (offline) | `fireworks` / `groq` / `vllm` (needs key or local endpoint) |
+| `EVIDENCE_PROVIDER` | `demo` (curated local pack) | `tavily` / `uploaded` / `hybrid` |
 | `CORS_ORIGINS` | `http://localhost:5173` | your real origin(s), never `*` |
 | `DEMO_MODE` | `true` | `false` |
 
@@ -172,6 +197,17 @@ CI (`.github/workflows/ci.yml`) always runs in mock/deterministic mode, so it ne
 ```bash
 uvicorn backend.api:app --reload --port 8000
 ```
+
+If the frontend says `Failed to fetch` or `Backend disconnected`, confirm port `8000` is serving the API, not the static helper server:
+```bash
+curl http://localhost:8000/health
+```
+Expected response:
+```json
+{"status":"ok"}
+```
+If you get HTML instead, stop the process on port `8000` and restart with `uvicorn backend.api:app --reload --port 8000`.
+
 Run a quick smoke test before a demo to confirm the whole backend chain works end-to-end:
 ```bash
 python -m backend.smoke_test
@@ -186,7 +222,7 @@ npm run dev      # local dev server on :5173
 npm run build    # production build / type-check gate
 ```
 
-**`GROQ_API_KEY` is optional:** the Future Self chat (`/avatar/chat`) uses Groq when `GROQ_API_KEY` is set in `.env`. Without it, the endpoint returns a deterministic, clearly-labelled fallback response (`llmBacked: false`) instead of crashing — the rest of the app (graph, `/simulate`, `/evidence`) does not need this key at all.
+**LLM keys are optional:** Future Self chat (`/avatar/chat`) uses the provider selected by `LLM_PROVIDER` when the matching key or local endpoint is configured. Without a live provider, the endpoint returns a deterministic, clearly labelled fallback response (`llmBacked: false`) instead of crashing.
 
 **The Memory Graph is empty (`/graph` returns 0 nodes):** that's expected on a fresh clone — nothing has been ingested yet. Run the ingestion pipeline to populate it from the bundled sample chunks:
 ```bash
@@ -203,7 +239,7 @@ python -m backend.main
 
 ---
 
-## ⚡ LLM providers: CPU/Groq mode vs AMD/vLLM mode
+## ⚡ LLM providers and live evidence
 
 Chat generation goes through a provider abstraction (`backend/LLM/`), selected with `LLM_PROVIDER`. Embeddings are selected independently with `EMBEDDING_PROVIDER`. Check the active setup at any time:
 
@@ -214,10 +250,13 @@ curl http://localhost:8000/llm/health
 curl "http://localhost:8000/evidence/search?query=AI%20startup%20pivot&k=5"
 ```
 
-**Current default — CPU / Groq mode:**
-- `LLM_PROVIDER=groq` (chat via Groq; needs `GROQ_API_KEY`). Without the key, chat is unavailable — the extraction pipeline reports the missing key and Future Self returns its deterministic fallback. Nothing crashes.
-- `EMBEDDING_PROVIDER=sentence_transformers` (local, CPU, no key).
+**Common local live mode:**
+- `LLM_PROVIDER=fireworks` with `FIREWORKS_API_KEY` enables live Future Self chat.
+- `EVIDENCE_PROVIDER=hybrid` with `TAVILY_API_KEY` combines Tavily live external signals with local/demo evidence when relevant.
+- `EMBEDDING_PROVIDER=sentence_transformers` keeps embeddings local on CPU.
 - `LLM_PROVIDER=mock` gives a deterministic offline chat provider (no network, no key) for tests/demos.
+
+Evidence labels are preserved in responses and UI state: demo/local evidence is not presented as live web evidence, and Tavily results are treated as external signals rather than verified facts.
 
 ### 🔴 AMD/vLLM deployment mode
 
@@ -260,7 +299,7 @@ python -m backend.evals.run_evals
 ```
 
 - Runs in-process against a `TestClient` in **deterministic / mock mode** (no paid APIs; `LLM_PROVIDER=mock`, `EMBEDDING_PROVIDER=mock`).
-- Attempts `/ingest/demo` (tolerates a 502 when `GROQ_API_KEY` is absent — evals still run against the evidence layer and heuristic engine).
+- Attempts `/ingest/demo` and still runs evals against the evidence layer and heuristic engine when optional live providers are unavailable.
 - Runs each case in `backend/evals/eval_cases.json` through `/simulate` (and `/avatar/chat` for selected cases), scores metrics, prints a pass/fail table, and **exits non-zero if any critical case fails**.
 
 Metrics include: `endpoint_success`, `schema_valid`, `timelines_count_valid`, `evidence_grounding_present`, `unsupported_claims_absent` (MarketAgent must not cite outside the evidence snapshot / must refuse when evidence is missing), `missing_context_detected`, `confidence_penalty_applied`, `recommendation_present`, `no_crash`, and (for avatar cases) `grounding_label_valid`.

@@ -180,6 +180,13 @@ function ingestionSummary(run: IngestionRun, label: string): string {
   return `${base}${fileBits}${warning}`;
 }
 
+function ingestionIssues(run: IngestionRun): string | null {
+  const issues = [...run.errors, ...run.warnings].filter(Boolean);
+  if (!issues.length) return null;
+  if (issues.length === 1) return issues[0];
+  return `${issues[0]} ${issues.length - 1} more issue(s) were reported.`;
+}
+
 export const useChronosStore = create<ChronosStore>((set, get) => ({
   currentStep: 0,
   activeSection: 'chronos-top',
@@ -415,6 +422,7 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
         connectStatus: `GitHub repo ingested: ${run.nodes_created} nodes, ${run.edges_created} edges.`,
         backendStatus: 'connected',
         isLoading: false,
+        currentStep: 2,
       });
     } catch (error) {
       console.warn('GitHub ingestion failed.', error);
@@ -434,7 +442,7 @@ export const useChronosStore = create<ChronosStore>((set, get) => ({
       set({
         lastIngestionRun: run,
         connectStatus: ingestionSummary(run, 'Files ingested'),
-        errorMessage: run.warnings.length || run.errors.length ? [...run.errors, ...run.warnings].join(' ') : null,
+        errorMessage: ingestionIssues(run),
         backendStatus: 'connected',
         isLoading: false,
       });

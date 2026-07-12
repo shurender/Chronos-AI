@@ -130,6 +130,9 @@ def _run_extraction(run: IngestionRun, chunks: list[dict]) -> None:
     from backend import config
     from backend.Safety.redaction import redact
 
+    contradiction_count = 0
+    contradiction_chunk_count = 0
+
     for chunk in chunks:
         # Privacy: redact PII/secrets from raw_text BEFORE it is embedded, stored,
         # or extracted — unless explicitly configured to store raw. Never logs the
@@ -196,12 +199,16 @@ def _run_extraction(run: IngestionRun, chunks: list[dict]) -> None:
             result = run_pipeline_on_chunk(pipeline, chunk)
             contradictions = result.get("contradictions", [])
             if contradictions:
-                run.warnings.append(
-                    f"{len(contradictions)} contradiction(s) flagged for chunk {chunk['chunk_id']}"
-                )
+                contradiction_count += len(contradictions)
+                contradiction_chunk_count += 1
         except Exception as exc:  # noqa: BLE001 — recorded, not swallowed
             logger.warning("Chunk %s failed extraction: %s", chunk.get("chunk_id"), exc)
             run.errors.append(f"chunk {chunk.get('chunk_id', '?')}: {exc}")
+
+    if contradiction_count:
+        run.warnings.append(
+            f"{contradiction_count} possible contradiction(s) flagged across {contradiction_chunk_count} chunk(s). Review graph evidence before relying on these extracted claims."
+        )
 
     save_graph()
     run.nodes_created = G.number_of_nodes() - nodes_before

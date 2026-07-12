@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Chronos Engine logo</title>
+  <desc id="desc">A circular decision path around a central node.</desc>
+  <defs>
+    <linearGradient id="chronos-mark" x1="12" y1="10" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.5" stop-color="#334155"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="chronos-accent" x1="18" y1="18" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#ffffff"/>
+  <rect x="5" y="5" width="54" height="54" rx="15" fill="url(#chronos-mark)"/>
+  <path d="M44.8 22.5A17 17 0 1 0 45 41" fill="none" stroke="#f8fafc" stroke-width="5.8" stroke-linecap="round"/>
+  <path d="M22.8 32h15.4" fill="none" stroke="#f8fafc" stroke-width="5.8" stroke-linecap="round"/>
+  <path d="M41.8 20.8 48 15.5l.9 8.1" fill="none" stroke="url(#chronos-accent)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="42.5" cy="32" r="4.6" fill="url(#chronos-accent)"/>
+  <circle cx="22.7" cy="32" r="2.6" fill="#f8fafc"/>
+</svg>

@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: chronos-ai-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.backend
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: fireworks
+      - key: EVIDENCE_PROVIDER
+        value: hybrid
+      - key: REQUIRE_LIVE_LLM
+        value: "false"
+      - key: EMBEDDING_PROVIDER
+        value: mock
+      - key: AGENT_MODE
+        value: deterministic
+      - key: DEMO_MODE
+        value: "false"
+      - key: CORS_ORIGINS
+        value: https://chronos-ai-frontend.vercel.app
+      - key: DATA_DIR
+        value: /data
+      - key: CHROMA_DB_PATH
+        value: /data/chroma_db
+      - key: GRAPH_PATH
+        value: /data/graph.gpickle
+      - key: PROVENANCE_DB_PATH
+        value: /data/provenance.db
+      - key: SIMULATION_DB_PATH
+        value: /data/simulations.db
+      - key: CONNECTOR_TOKEN_STORE
+        value: local
+      - key: CONNECTOR_ENCRYPTION_KEY
+        generateValue: true
+      - key: FIREWORKS_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
