@@ -45,6 +45,31 @@ function FadeInBlock({ children, delay = 0 }: { children: React.ReactNode; delay
   );
 }
 
+// Reusable component that plays video only when visible on screen
+function ScrollVideo({ src, className }: { src: string, className?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          videoRef.current?.play().catch(() => {});
+        } else {
+          videoRef.current?.pause();
+        }
+      },
+      { threshold: 0.3 }
+    );
+
+    if (videoRef.current) observer.observe(videoRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <video ref={videoRef} src={src} muted loop playsInline className={className} />
+  );
+}
+
 export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
   const triggerAppLaunch = useChronosStore((state) => state.triggerAppLaunch);
   const setActiveSection = useChronosStore((state) => state.setActiveSection);
@@ -134,9 +159,7 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
           >
             {/* Two structurally identical sets, each with its own matching
                 gap/padding — required for the -50% translate loop to be
-                seamless. The OUTER track itself must have zero gap/padding
-                of its own, or the halves stop being exactly equal width and
-                the loop jumps at the seam every cycle. */}
+                seamless. */}
             {[0, 1].map((setIndex) => (
               <div key={`set-${setIndex}`} className="flex gap-8 pl-4 pr-8" aria-hidden={setIndex === 1}>
                 {FEATURES.map((f, i) => (
@@ -203,15 +226,13 @@ export function LandingPage({ onLaunch }: { onLaunch?: () => void } = {}) {
         </FadeInBlock>
 
         <FadeInBlock delay={150}>
-          <div className="w-full max-w-5xl aspect-video bg-gray-200 rounded-xl border border-gray-300 shadow-xl flex items-center justify-center relative overflow-hidden">
-            <div className="text-center">
-              <span className="bg-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-sm text-gray-600">
-                Video Canvas Placeholder
-              </span>
-              <p className="mt-4 px-4 text-sm text-gray-500 max-w-sm mx-auto">
-                Implement Framer Motion <code>useScroll</code> here to scrub a canvas image sequence based on viewport scroll progress.
-              </p>
-            </div>
+          <div className="w-[85vw] max-w-5xl aspect-video bg-black rounded-xl border border-gray-300 shadow-xl flex items-center justify-center relative overflow-hidden">
+            
+            <ScrollVideo
+              src="/demo-video.mp4"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+
           </div>
         </FadeInBlock>
       </section>
