@@ -55,7 +55,6 @@ function ConnectDataView() {
   const isLoading = useChronosStore((state) => state.isLoading);
   const canContinueAfterIngest =
     !!lastIngestionRun &&
-    lastIngestionRun.source_type === 'github' &&
     (lastIngestionRun.chunks_created > 0 || lastIngestionRun.nodes_created > 0 || lastIngestionRun.edges_created > 0);
 
   useEffect(() => {
@@ -318,7 +317,7 @@ function ConnectDataView() {
         </div>
         {canContinueAfterIngest && (
           <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left">
-            <p className="text-xs font-semibold text-emerald-800">Repo ingestion complete</p>
+            <p className="text-xs font-semibold text-emerald-800">Data ingestion complete</p>
             <p className="mt-1 text-xs text-emerald-700">
               {lastIngestionRun.chunks_created} chunks · {lastIngestionRun.nodes_created} nodes · {lastIngestionRun.edges_created} edges
             </p>
