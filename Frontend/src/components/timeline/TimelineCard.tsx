@@ -88,7 +88,7 @@ export function TimelineCard({ timeline, className = '', selected = false, onSel
     <article
       onClick={() => onSelect?.(timeline.id)}
       className={[
-        'flex w-96 shrink-0 flex-col rounded-xl border bg-white shadow-sm',
+        'flex w-full min-w-0 flex-col rounded-xl border bg-white shadow-sm lg:w-96 lg:shrink-0',
         onSelect ? 'cursor-pointer transition hover:border-indigo-300' : '',
         selected
           ? 'border-indigo-500 ring-2 ring-indigo-200'

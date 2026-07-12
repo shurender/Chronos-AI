@@ -517,7 +517,7 @@ function SimulateFuturesView() {
             <HistoricalPrecedentsPanel />
             <ExternalEvidencePanel />
             <AgentCouncilPanel />
-            <div className="flex min-h-0 flex-1 gap-4 overflow-auto p-4 items-start sm:gap-6 sm:p-8">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 sm:gap-6 sm:p-8 lg:flex lg:items-start">
               {simulationData.timelines.map((timeline) => (
                 <TimelineCard
                   key={timeline.id}

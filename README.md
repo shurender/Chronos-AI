@@ -39,6 +39,26 @@ This is a working MVP built to demonstrate the architecture end-to-end, not a pr
 
 ---
 
+## Unicorn Track Pre-Screening Notes
+
+**What we built:** Chronos Engine is a decision-intelligence app that ingests project/workspace context, builds a memory graph, simulates plausible future branches, and lets the user ask a Future Self advisor grounded in the selected timeline and citations.
+
+**AMD / approved compute usage:** The live demo uses Fireworks AI as the hosted LLM provider (`LLM_PROVIDER=fireworks`, default model `accounts/fireworks/models/gpt-oss-120b`). The backend also includes an AMD ROCm/vLLM-ready path via the OpenAI-compatible provider adapter (`LLM_PROVIDER=vllm`, `VLLM_BASE_URL`, `VLLM_MODEL`, `AMD_MODE=true`) for running compatible open-weight models on AMD GPU infrastructure.
+
+**Main implementation paths:**
+* Frontend app: `Frontend/src/App.tsx`
+* Frontend API client/contracts: `Frontend/src/api/`
+* Backend API: `backend/api.py`
+* Simulation engine: `backend/Decision_Graph/Forcast_engine.py`
+* Future Self chat: `backend/Future_Self/avatar_engine.py`
+* LLM providers: `backend/LLM/`
+* Evidence providers: `backend/External_Evidence/`
+* Connectors/ingestion: `backend/Connectors/`, `backend/Ingestion/`
+
+**External services documented:** Fireworks AI, Tavily, GitHub public repo ingestion, Vercel frontend hosting, Render backend hosting, and optional AMD ROCm/vLLM serving.
+
+---
+
 ## 📦 Local Setup Instructions
 
 To run Chronos Engine locally, you need to spin up both the **Frontend** and the **Backend** in two separate terminal windows.
