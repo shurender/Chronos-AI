@@ -30,8 +30,10 @@ const GithubIcon = ({ className }: { className?: string }) => (
 // ── Step 1: Connect Data ──────────────────────────────────────────────────────
 function ConnectDataView() {
   const [maxItems, setMaxItems] = useState(200);
+  const [manualGithubRepo, setManualGithubRepo] = useState('');
   const loadDemoWorkspace = useChronosStore((state) => state.loadDemoWorkspace);
   const startConnector = useChronosStore((state) => state.startConnector);
+  const ingestGithubRepo = useChronosStore((state) => state.ingestGithubRepo);
   const loadConnectorSources = useChronosStore((state) => state.loadConnectorSources);
   const selectConnectorSources = useChronosStore((state) => state.selectConnectorSources);
   const syncConnector = useChronosStore((state) => state.syncConnector);
@@ -183,6 +185,35 @@ function ConnectDataView() {
                 {status.status === 'syncing' ? 'Syncing...' : status.connected ? 'Sync selected' : 'Connect'}
               </button>
               {status.error && <p className="text-[11px] leading-snug text-red-600">{status.error}</p>}
+              {provider === 'github' && (
+                <form
+                  className="w-full rounded-lg border border-gray-200 bg-white p-2 text-left"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const repo = manualGithubRepo.trim();
+                    if (repo) void ingestGithubRepo(repo);
+                  }}
+                >
+                  <label className="block text-[11px] font-semibold text-gray-700">
+                    Or ingest a repo directly
+                  </label>
+                  <input
+                    type="text"
+                    value={manualGithubRepo}
+                    onChange={(event) => setManualGithubRepo(event.target.value)}
+                    placeholder="owner/repo or GitHub URL"
+                    disabled={isLoading}
+                    className="mt-1 w-full rounded-md border border-gray-200 px-2 py-1.5 text-[11px] text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLoading || !manualGithubRepo.trim()}
+                    className="mt-2 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Ingest repo
+                  </button>
+                </form>
+              )}
               {status.connected && (
                 <p className="text-[11px] text-gray-500">
                   {(status.source_counts.new ?? 0)} new · {(status.source_counts.updated ?? 0)} updated · {(status.source_counts.skipped_duplicate ?? 0)} skipped

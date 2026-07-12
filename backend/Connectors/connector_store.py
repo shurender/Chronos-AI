@@ -150,6 +150,16 @@ def get_status(provider: ConnectorProvider) -> ConnectorStatus:
         raw = {**raw, "provider": provider, "status": "connected", "connected": True, "display_name": "GITHUB_TOKEN"}
     elif provider == "notion" and config.NOTION_TOKEN:
         raw = {**raw, "provider": provider, "status": "connected", "connected": True, "display_name": "NOTION_TOKEN"}
+    elif provider == "github" and raw.get("error") == "Connect GitHub or set GITHUB_TOKEN before syncing.":
+        raw = {
+            **raw,
+            "provider": provider,
+            "status": "not_connected",
+            "connected": False,
+            "error": None,
+            "last_error": None,
+            "last_sync_status": None,
+        }
     return ConnectorStatus(**raw)
 
 
